@@ -1,6 +1,20 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "@tanstack/react-router";
-import { LogOut, Settings, Wrench, AlertTriangle, LayoutDashboard } from "lucide-react";
+import {
+  LogOut,
+  Settings,
+  Wrench,
+  AlertTriangle,
+  LayoutDashboard,
+  Users,
+  Network,
+  Ticket,
+  ClipboardCheck,
+  Paperclip,
+  BookOpen,
+  BarChart3,
+  Bell,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -40,6 +54,44 @@ const navItems: NavItem[] = [
     label: "رموز الأخطاء",
     icon: AlertTriangle,
     permissions: ["error_codes.read"],
+  },
+  { to: "/customers", label: "العملاء", icon: Users, permissions: ["customers.read"] },
+  {
+    to: "/customer-systems",
+    label: "أنظمة العملاء",
+    icon: Network,
+    permissions: ["customer_systems.read"],
+  },
+  { to: "/tickets", label: "التذاكر", icon: Ticket, permissions: ["tickets.read_all"] },
+  {
+    to: "/assignments",
+    label: "المهام الميدانية والتركيبات",
+    icon: ClipboardCheck,
+    permissions: ["field_assignments.read_all", "field_assignments.read_assigned"],
+  },
+  {
+    to: "/attachments",
+    label: "المرفقات",
+    icon: Paperclip,
+    permissions: ["attachments.manage", "attachments.read_assigned"],
+  },
+  {
+    to: "/knowledge-base",
+    label: "قاعدة المعرفة",
+    icon: BookOpen,
+    permissions: ["knowledge_base.read"],
+  },
+  {
+    to: "/reports",
+    label: "التقارير",
+    icon: BarChart3,
+    permissions: ["reports.operational.read", "reports.management.read"],
+  },
+  {
+    to: "/notifications",
+    label: "الإشعارات",
+    icon: Bell,
+    permissions: ["notifications.read"],
   },
 ];
 
