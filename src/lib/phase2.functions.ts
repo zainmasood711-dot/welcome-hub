@@ -1814,11 +1814,23 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => knowledgeFeedbackSchema.parse(input))
   .handler(async ({ context, data }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    let engineerId = data.engineer_id ?? null;
+    if (!engineerId) {
+      const { data: profileRow, error: profileError } = await supabase
+        .from("profiles")
+        .select("engineer_id")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
+      if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+      engineerId = profileRow.engineer_id;
+    }
+
     const { error } = await supabase.from("knowledge_feedback").insert({
       knowledge_base_id: data.knowledge_base_id,
       ticket_id: data.ticket_id ?? null,
-      engineer_id: data.engineer_id,
+      engineer_id: engineerId,
       rating: data.rating,
       notes: data.notes ?? null,
     });
