@@ -14,12 +14,15 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
+import { Route as AuthenticatedKnowledgeBaseRouteImport } from './routes/_authenticated/knowledge-base'
 import { Route as AuthenticatedErrorCodesRouteImport } from './routes/_authenticated/error-codes'
 import { Route as AuthenticatedEngineersRouteImport } from './routes/_authenticated/engineers'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
 import { Route as AuthenticatedCustomerSystemsRouteImport } from './routes/_authenticated/customer-systems'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
+import { Route as AuthenticatedAttachmentsRouteImport } from './routes/_authenticated/attachments'
 import { Route as AuthenticatedAssignmentsRouteImport } from './routes/_authenticated/assignments'
 
 const AuthRoute = AuthRouteImport.update({
@@ -46,6 +49,18 @@ const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedKnowledgeBaseRoute =
+  AuthenticatedKnowledgeBaseRouteImport.update({
+    id: '/knowledge-base',
+    path: '/knowledge-base',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedErrorCodesRoute = AuthenticatedErrorCodesRouteImport.update({
   id: '/error-codes',
   path: '/error-codes',
@@ -77,6 +92,12 @@ const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
   path: '/catalog',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAttachmentsRoute =
+  AuthenticatedAttachmentsRouteImport.update({
+    id: '/attachments',
+    path: '/attachments',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAssignmentsRoute =
   AuthenticatedAssignmentsRouteImport.update({
     id: '/assignments',
@@ -88,12 +109,15 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/assignments': typeof AuthenticatedAssignmentsRoute
+  '/attachments': typeof AuthenticatedAttachmentsRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/engineers': typeof AuthenticatedEngineersRoute
   '/error-codes': typeof AuthenticatedErrorCodesRoute
+  '/knowledge-base': typeof AuthenticatedKnowledgeBaseRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
 }
@@ -101,12 +125,15 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/assignments': typeof AuthenticatedAssignmentsRoute
+  '/attachments': typeof AuthenticatedAttachmentsRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
   '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/engineers': typeof AuthenticatedEngineersRoute
   '/error-codes': typeof AuthenticatedErrorCodesRoute
+  '/knowledge-base': typeof AuthenticatedKnowledgeBaseRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
 }
@@ -116,12 +143,15 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/assignments': typeof AuthenticatedAssignmentsRoute
+  '/_authenticated/attachments': typeof AuthenticatedAttachmentsRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
   '/_authenticated/customer-systems': typeof AuthenticatedCustomerSystemsRoute
   '/_authenticated/customers': typeof AuthenticatedCustomersRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/engineers': typeof AuthenticatedEngineersRoute
   '/_authenticated/error-codes': typeof AuthenticatedErrorCodesRoute
+  '/_authenticated/knowledge-base': typeof AuthenticatedKnowledgeBaseRoute
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
 }
@@ -131,12 +161,15 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/assignments'
+    | '/attachments'
     | '/catalog'
     | '/customer-systems'
     | '/customers'
     | '/dashboard'
     | '/engineers'
     | '/error-codes'
+    | '/knowledge-base'
+    | '/notifications'
     | '/reports'
     | '/tickets'
   fileRoutesByTo: FileRoutesByTo
@@ -144,12 +177,15 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/assignments'
+    | '/attachments'
     | '/catalog'
     | '/customer-systems'
     | '/customers'
     | '/dashboard'
     | '/engineers'
     | '/error-codes'
+    | '/knowledge-base'
+    | '/notifications'
     | '/reports'
     | '/tickets'
   id:
@@ -158,12 +194,15 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/assignments'
+    | '/_authenticated/attachments'
     | '/_authenticated/catalog'
     | '/_authenticated/customer-systems'
     | '/_authenticated/customers'
     | '/_authenticated/dashboard'
     | '/_authenticated/engineers'
     | '/_authenticated/error-codes'
+    | '/_authenticated/knowledge-base'
+    | '/_authenticated/notifications'
     | '/_authenticated/reports'
     | '/_authenticated/tickets'
   fileRoutesById: FileRoutesById
@@ -211,6 +250,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/knowledge-base': {
+      id: '/_authenticated/knowledge-base'
+      path: '/knowledge-base'
+      fullPath: '/knowledge-base'
+      preLoaderRoute: typeof AuthenticatedKnowledgeBaseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/error-codes': {
       id: '/_authenticated/error-codes'
       path: '/error-codes'
@@ -253,6 +306,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCatalogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/attachments': {
+      id: '/_authenticated/attachments'
+      path: '/attachments'
+      fullPath: '/attachments'
+      preLoaderRoute: typeof AuthenticatedAttachmentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/assignments': {
       id: '/_authenticated/assignments'
       path: '/assignments'
@@ -265,24 +325,30 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAssignmentsRoute: typeof AuthenticatedAssignmentsRoute
+  AuthenticatedAttachmentsRoute: typeof AuthenticatedAttachmentsRoute
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
   AuthenticatedCustomerSystemsRoute: typeof AuthenticatedCustomerSystemsRoute
   AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEngineersRoute: typeof AuthenticatedEngineersRoute
   AuthenticatedErrorCodesRoute: typeof AuthenticatedErrorCodesRoute
+  AuthenticatedKnowledgeBaseRoute: typeof AuthenticatedKnowledgeBaseRoute
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAssignmentsRoute: AuthenticatedAssignmentsRoute,
+  AuthenticatedAttachmentsRoute: AuthenticatedAttachmentsRoute,
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
   AuthenticatedCustomerSystemsRoute: AuthenticatedCustomerSystemsRoute,
   AuthenticatedCustomersRoute: AuthenticatedCustomersRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEngineersRoute: AuthenticatedEngineersRoute,
   AuthenticatedErrorCodesRoute: AuthenticatedErrorCodesRoute,
+  AuthenticatedKnowledgeBaseRoute: AuthenticatedKnowledgeBaseRoute,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
 }
