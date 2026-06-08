@@ -105,8 +105,14 @@ function AssignmentsPage() {
     setCachedAssignments(assignments);
   }, [assignments, assignmentsCacheKey]);
 
+  const sourceAssignments = useMemo(() => {
+    if (assignments.length > 0) return assignments;
+    if (isFieldEngineer) return cachedAssignments;
+    return assignments;
+  }, [assignments, cachedAssignments, isFieldEngineer]);
+
   const filteredAssignments = useMemo(() => {
-    return assignments.filter((assignment) => {
+    return sourceAssignments.filter((assignment) => {
       if (statusFilter !== "all" && assignment.status !== statusFilter) return false;
       if (typeFilter !== "all" && assignment.assignment_type !== typeFilter) return false;
       if (engineerFilter !== "all" && assignment.engineer_id !== engineerFilter) return false;
@@ -115,7 +121,7 @@ function AssignmentsPage() {
       const searchBucket = `${assignment.id} ${assignment.status} ${assignment.assignment_type}`.toLowerCase();
       return searchBucket.includes(search.toLowerCase());
     });
-  }, [assignments, statusFilter, typeFilter, engineerFilter, search, fromDate, toDate]);
+  }, [sourceAssignments, statusFilter, typeFilter, engineerFilter, search, fromDate, toDate]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAssignments.length / pageSize));
   const paginatedAssignments = useMemo(() => {
@@ -131,7 +137,7 @@ function AssignmentsPage() {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) ?? filteredAssignments[0] ?? null;
+   const selectedAssignment = sourceAssignments.find((item) => item.id === selectedAssignmentId) ?? filteredAssignments[0] ?? null;
   const relatedTicket = refs?.tickets.find((item) => item.id === selectedAssignment?.ticket_id);
   const relatedSystem = refs?.customerSystems.find((item) => item.id === selectedAssignment?.customer_system_id);
   const relatedCustomer = refs?.customers.find((item) => item.id === relatedSystem?.customer_id || item.id === relatedTicket?.customer_id);
@@ -232,6 +238,23 @@ function AssignmentsPage() {
   return (
     <AppShell roles={roles} title="المهام الميدانية والتركيبات">
       <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          {isOnline ? (
+            <Badge variant="secondary">متصل</Badge>
+          ) : (
+            <Badge variant="outline">غير متصل - تعرض آخر المهام المحفوظة</Badge>
+          )}
+          {!isOnline && cachedAssignments.length > 0 && <span className="text-xs text-muted-foreground">{cachedAssignments.length} مهمة متاحة محليًا</span>}
+        </div>
+
+        {assignmentsQuery.isLoading && (
+          <div className="rounded-lg border bg-card p-3 text-sm text-muted-foreground">جاري تحميل المهام...</div>
+        )}
+
+        {assignmentsQuery.error && isOnline && (
+          <div className="rounded-lg border border-destructive/40 bg-card p-3 text-sm text-destructive">تعذر تحميل المهام حالياً. حاول التحديث مرة أخرى.</div>
+        )}
+
         {(canManage || canSubmit) && <Button onClick={() => setOpen(true)}>{canManage ? "إضافة مهمة" : "تحديث مهمة"}</Button>}
 
         <div className="grid grid-cols-1 gap-2 rounded-lg border bg-card p-3 md:grid-cols-4">
