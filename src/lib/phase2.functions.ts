@@ -10,7 +10,12 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 const customerSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().trim().min(2).max(160),
-  phone: z.string().trim().min(6).max(25),
+  phone: z
+    .string()
+    .trim()
+    .min(8)
+    .max(25)
+    .regex(/^[0-9+\-()\s]+$/, "رقم الهاتف يجب أن يحتوي أرقامًا ورموز هاتف فقط"),
   governorate: z.string().trim().max(80).optional().nullable(),
   city: z.string().trim().max(80).optional().nullable(),
   address: z.string().trim().max(300).optional().nullable(),
@@ -35,6 +40,19 @@ const systemAssetSchema = z.object({
   serial_number: z.string().trim().max(150).optional().nullable(),
   warranty_status: z.enum(["valid", "expired", "unknown"]),
   notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+const customerSystemAssetDraftSchema = z.object({
+  product_id: z.string().uuid(),
+  quantity: z.number().int().min(1).max(999),
+  serial_number: z.string().trim().max(150).optional().nullable(),
+  warranty_status: z.enum(["valid", "expired", "unknown"]),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+const customerSystemWithAssetsSchema = z.object({
+  system: customerSystemSchema,
+  assets: z.array(customerSystemAssetDraftSchema).max(100).default([]),
 });
 
 const ticketSchema = z.object({
