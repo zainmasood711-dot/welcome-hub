@@ -241,7 +241,7 @@ function CustomersPage() {
                     <TableCell>{formatDate(item.created_at)}</TableCell>
                     <TableCell className="text-left">
                       <Button asChild variant="outline" size="sm">
-                        <Link to="/_authenticated/customers/$customerId" params={{ customerId: item.id }}>فتح</Link>
+                        <Link to="/customers/$customerId" params={{ customerId: item.id }}>فتح</Link>
                       </Button>
                     </TableCell>
                   </TableRow>

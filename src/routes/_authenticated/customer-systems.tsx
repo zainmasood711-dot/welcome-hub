@@ -207,7 +207,7 @@ function CustomerSystemsPage() {
                       <TableRow key={item.id} onClick={() => setSelectedSystemId(item.id)} className="cursor-pointer">
                         <TableCell className="font-medium">{item.system_name}</TableCell>
                         <TableCell>
-                          <Link to="/_authenticated/customers/$customerId" params={{ customerId: item.customer_id }} className="hover:underline">
+                          <Link to="/customers/$customerId" params={{ customerId: item.customer_id }} className="hover:underline">
                             {customerName}
                           </Link>
                         </TableCell>
