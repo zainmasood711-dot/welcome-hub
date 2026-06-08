@@ -1171,3 +1171,23 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       knowledgeBaseUsage,
     };
   });
+
+export const confirmDatabaseAndSeedDemo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    const { getDbStatus, seedDemoData } = await import("@/lib/demo-seed.server");
+    const before = await getDbStatus();
+    const seeded = await seedDemoData(userId);
+    const after = await getDbStatus();
+
+    return {
+      ok: true,
+      before,
+      seeded,
+      after,
+      message: "تم التحقق من الجداول والهجرات وإدخال بيانات تجريبية بنجاح",
+    };
+  });

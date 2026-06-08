@@ -3,14 +3,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { AlertTriangle, Clock3, ListChecks, ShieldCheck, Ticket, Users, Wrench } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { useState } from "react";
+import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireAuthenticatedUser } from "@/lib/auth-client";
 import { getDashboardOverview } from "@/lib/phase1.functions";
-import { getOperationsReport, listAssignments, listTickets } from "@/lib/phase2.functions";
+import { confirmDatabaseAndSeedDemo, getOperationsReport, listAssignments, listTickets } from "@/lib/phase2.functions";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   beforeLoad: async () => {
@@ -24,6 +27,9 @@ function DashboardPage() {
   const reportFn = useServerFn(getOperationsReport);
   const listAssignmentsFn = useServerFn(listAssignments);
   const listTicketsFn = useServerFn(listTickets);
+  const seedFn = useServerFn(confirmDatabaseAndSeedDemo);
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<null | { before: Record<string, number>; after: Record<string, number> }>(null);
   const { data: accessData } = useAccessContext();
   const primaryRole = accessData?.primaryRole;
   const { data, isLoading, error } = useQuery({
@@ -50,6 +56,19 @@ function DashboardPage() {
   });
 
   const roles = accessData?.roles ?? [];
+
+  const runSeed = async () => {
+    setIsSeeding(true);
+    try {
+      const result = await seedFn();
+      setSeedResult({ before: result.before, after: result.after });
+      toast.success("تم تجهيز البيانات التجريبية بنجاح");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر تجهيز البيانات التجريبية");
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -104,6 +123,24 @@ function DashboardPage() {
   return (
     <AppShell roles={roles} title="لوحة التحكم">
       <div className="space-y-4">
+        {primaryRole === "support_engineer" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">تهيئة قاعدة البيانات التجريبية</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button onClick={runSeed} disabled={isSeeding}>
+                {isSeeding ? "جاري التأكيد والـ Seed..." : "تأكيد الهجرات وإدخال بيانات تجريبية"}
+              </Button>
+              {seedResult && (
+                <p className="text-xs text-muted-foreground">
+                  قبل: تذاكر {seedResult.before.tickets} / تكليفات {seedResult.before.assignments} — بعد: تذاكر {seedResult.after.tickets} / تكليفات {seedResult.after.assignments}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           {(primaryRole === "field_engineer" ? fieldCards : primaryRole === "manager" ? managerCards : supportCards).map((card) => {
             const Icon = card.icon;
