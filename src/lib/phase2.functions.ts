@@ -80,6 +80,68 @@ const ticketSchema = z.object({
   resolved_at: z.string().optional().nullable(),
 });
 
+const ticketListFiltersSchema = z.object({
+  status: z.enum(["new", "in_progress", "resolved_remote", "assigned_field", "closed"]).optional().nullable(),
+  ticket_type: z.enum(["fault", "inquiry", "preventive_maintenance", "new_installation"]).optional().nullable(),
+  priority: z.enum(["low", "medium", "high", "critical"]).optional().nullable(),
+  engineer_needed: z.boolean().optional().nullable(),
+  from_date: z.string().optional().nullable(),
+  to_date: z.string().optional().nullable(),
+  search: z.string().trim().max(200).optional().nullable(),
+});
+
+const ticketCreateWorkflowSchema = z.object({
+  customer_id: z.string().uuid().optional().nullable(),
+  quick_customer: z
+    .object({
+      name: z.string().trim().min(2).max(160),
+      phone: z
+        .string()
+        .trim()
+        .min(8)
+        .max(25)
+        .regex(/^[0-9+\-()\s]+$/, "رقم الهاتف يجب أن يحتوي أرقامًا ورموز هاتف فقط"),
+      governorate: z.string().trim().max(80).optional().nullable(),
+      city: z.string().trim().max(80).optional().nullable(),
+      address: z.string().trim().max(300).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  customer_system_id: z.string().uuid().optional().nullable(),
+  ticket_type: z.enum(["fault", "inquiry", "preventive_maintenance", "new_installation"]),
+  priority: z.enum(["low", "medium", "high", "critical"]),
+  title: z.string().trim().min(3).max(180),
+  description: z.string().trim().min(8).max(2200),
+  affected_product_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+  attachment_files: z
+    .array(
+      z.object({
+        file_type: z.enum(["image", "battery_file", "document"]),
+        file_path: z.string().trim().min(3).max(500),
+        original_name: z.string().trim().max(255).optional().nullable(),
+        file_size: z.number().int().min(0).max(20_971_520).optional().nullable(),
+      }),
+    )
+    .max(10)
+    .default([]),
+  solution_type: z.enum(["remote", "field", "bring_to_center", "no_fix_needed"]).optional().nullable(),
+  remote_solution_notes: z.string().trim().max(4000).optional().nullable(),
+  knowledge_base_id: z.string().uuid().optional().nullable(),
+  create_knowledge_entry: z.boolean().default(false),
+  field_visit_needed: z.boolean().default(false),
+  assignment: z
+    .object({
+      engineer_id: z.string().uuid(),
+      assignment_type: z.enum(["repair_visit", "new_installation"]),
+      scheduled_date: z.string().optional().nullable(),
+      notes: z.string().trim().max(1000).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
 const assignmentSchema = z.object({
   id: z.string().uuid().optional(),
   ticket_id: z.string().uuid().optional().nullable(),
@@ -595,13 +657,29 @@ export const saveCustomerSystemWithAssets = createServerFn({ method: "POST" })
     return { ok: true, id: systemId, assets_count: data.assets.length };
   });
 
-export const listTickets = createServerFn({ method: "GET" })
+export const listTickets = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input) => ticketListFiltersSchema.parse(input ?? {}))
+  .handler(async ({ context, data }) => {
     const { supabase } = context;
-    const { data, error } = await supabase.from("tickets").select("*").order("created_at", { ascending: false });
+    let query = supabase.from("tickets").select("*").order("created_at", { ascending: false }).limit(500);
+
+    if (data.status) query = query.eq("status", data.status);
+    if (data.ticket_type) query = query.eq("ticket_type", data.ticket_type);
+    if (data.priority) query = query.eq("priority", data.priority);
+    if (data.from_date) query = query.gte("created_at", data.from_date);
+    if (data.to_date) query = query.lte("created_at", data.to_date);
+    if (data.search) query = query.ilike("description", `%${data.search}%`);
+
+    const { data: rows, error } = await query;
     if (error) throw new Error(`تعذر تحميل التذاكر: ${error.message}`);
-    return data ?? [];
+
+    return (rows ?? []).filter((ticket) => {
+      if (data.engineer_needed == null) return true;
+      const needsField =
+        ticket.status === "assigned_field" || ticket.solution_type === "field" || ticket.solution_type === "bring_to_center";
+      return data.engineer_needed ? needsField : !needsField;
+    });
   });
 
 export const saveTicket = createServerFn({ method: "POST" })
@@ -713,6 +791,178 @@ export const saveTicket = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(`تعذر إنشاء التذكرة: ${error.message}`);
     return { ok: true, id: created.id };
+  });
+
+export const createTicketWorkflow = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => ticketCreateWorkflowSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    let customerId = data.customer_id ?? null;
+    if (!customerId && data.quick_customer) {
+      const { data: createdCustomer, error: customerError } = await supabase
+        .from("customers")
+        .insert({
+          name: data.quick_customer.name,
+          phone: data.quick_customer.phone,
+          governorate: data.quick_customer.governorate ?? null,
+          city: data.quick_customer.city ?? null,
+          address: data.quick_customer.address ?? null,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (customerError) throw new Error(`تعذر إنشاء العميل السريع: ${customerError.message}`);
+      customerId = createdCustomer.id;
+    }
+
+    if (!customerId) throw new Error("يجب اختيار عميل أو إنشاء عميل سريع");
+
+    if (data.customer_system_id) {
+      const { data: systemRef, error: systemError } = await supabase
+        .from("customer_systems")
+        .select("id, customer_id")
+        .eq("id", data.customer_system_id)
+        .maybeSingle();
+      if (systemError) throw new Error(`تعذر التحقق من نظام العميل: ${systemError.message}`);
+      if (!systemRef || systemRef.customer_id !== customerId) {
+        throw new Error("النظام المختار لا يتبع العميل المحدد");
+      }
+    }
+
+    let errorCodeText = data.error_code_text ?? null;
+    if (data.error_code_id && !errorCodeText) {
+      const { data: errorRef, error: errorRefError } = await supabase
+        .from("error_codes")
+        .select("code")
+        .eq("id", data.error_code_id)
+        .maybeSingle();
+      if (errorRefError) throw new Error(`تعذر تحميل كود العطل: ${errorRefError.message}`);
+      errorCodeText = errorRef?.code ?? null;
+    }
+
+    const composedDescription = `${data.title.trim()}\n\n${data.description.trim()}`;
+    const initialStatus = data.field_visit_needed ? "assigned_field" : "new";
+    const derivedSolutionType = data.solution_type ?? (data.field_visit_needed ? "field" : null);
+
+    const { data: createdTicket, error: ticketError } = await supabase
+      .from("tickets")
+      .insert({
+        customer_id: customerId,
+        customer_system_id: data.customer_system_id ?? null,
+        category_id: null,
+        error_code_id: data.error_code_id ?? null,
+        ticket_type: data.ticket_type,
+        status: initialStatus,
+        priority: data.priority,
+        description: composedDescription,
+        affected_product_id: data.affected_product_id ?? null,
+        error_code_text: errorCodeText,
+        solution_type: derivedSolutionType,
+        remote_solution_notes: data.remote_solution_notes ?? null,
+        knowledge_base_id: data.knowledge_base_id ?? null,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (ticketError) throw new Error(`تعذر إنشاء التذكرة: ${ticketError.message}`);
+
+    if (data.attachment_files.length > 0) {
+      const attachmentRows = data.attachment_files.map((file) => {
+        const row = {
+          attachable_type: "ticket" as const,
+          attachable_id: createdTicket.id,
+          file_type: file.file_type,
+          file_path: file.file_path,
+          original_name: file.original_name ?? null,
+          file_size: file.file_size ?? null,
+          description: null,
+          uploaded_by: userId,
+        };
+        validateAttachmentInput(row);
+        return row;
+      });
+
+      const { error: attachmentError } = await supabase.from("attachments").insert(attachmentRows);
+      if (attachmentError) throw new Error(`تم إنشاء التذكرة لكن تعذر حفظ المرفقات: ${attachmentError.message}`);
+    }
+
+    let assignmentId: string | null = null;
+    if (data.field_visit_needed) {
+      if (!data.assignment?.engineer_id) {
+        throw new Error("عند طلب زيارة ميدانية يجب تحديد مهندس للتكليف");
+      }
+
+      const { data: createdAssignment, error: assignmentError } = await supabase
+        .from("assignments")
+        .insert({
+          ticket_id: createdTicket.id,
+          customer_system_id: data.customer_system_id ?? null,
+          engineer_id: data.assignment.engineer_id,
+          assigned_by: userId,
+          assignment_type: data.assignment.assignment_type,
+          scheduled_date: data.assignment.scheduled_date ?? null,
+          status: "pending",
+          recommendations: data.assignment.notes ?? null,
+        })
+        .select("id")
+        .single();
+      if (assignmentError) throw new Error(`تم إنشاء التذكرة لكن تعذر إنشاء التكليف: ${assignmentError.message}`);
+      assignmentId = createdAssignment.id;
+    }
+
+    let createdKnowledgeId: string | null = null;
+    if (data.create_knowledge_entry) {
+      const remoteNotes = data.remote_solution_notes?.trim() ?? "";
+      if (remoteNotes.length < 10) {
+        throw new Error("لإنشاء مادة معرفة جديدة، يجب إدخال ملاحظات حل عن بُعد واضحة");
+      }
+
+      const generatedKeywords = await generateKnowledgeKeywords(supabase, {
+        productId: data.affected_product_id,
+        errorCode: errorCodeText,
+        issueDescription: composedDescription,
+        providedKeywords: null,
+      });
+
+      const { data: createdKnowledge, error: kbError } = await supabase
+        .from("knowledge_base")
+        .insert({
+          title: `حل: ${data.title.trim()}`,
+          issue_description: composedDescription,
+          solution_steps: remoteNotes,
+          product_id: data.affected_product_id ?? null,
+          error_code_text: errorCodeText,
+          search_keywords: generatedKeywords || null,
+          source: "auto_from_ticket",
+          linked_ticket_ids: [createdTicket.id],
+          success_count: 0,
+          fail_count: 0,
+          effectiveness_rate: 0,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (kbError) throw new Error(`تم إنشاء التذكرة لكن تعذر إنشاء مادة المعرفة: ${kbError.message}`);
+
+      createdKnowledgeId = createdKnowledge.id;
+      const { error: updateTicketKbError } = await supabase
+        .from("tickets")
+        .update({ knowledge_base_id: createdKnowledge.id })
+        .eq("id", createdTicket.id);
+      if (updateTicketKbError) throw new Error(`تم إنشاء مادة المعرفة لكن تعذر ربطها بالتذكرة: ${updateTicketKbError.message}`);
+    }
+
+    return {
+      ok: true,
+      ticket_id: createdTicket.id,
+      customer_id: customerId,
+      assignment_id: assignmentId,
+      knowledge_id: createdKnowledgeId,
+      attachments_count: data.attachment_files.length,
+    };
   });
 
 export const getKnowledgeSuggestions = createServerFn({ method: "POST" })

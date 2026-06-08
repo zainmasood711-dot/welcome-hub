@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -12,19 +12,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import {
-  createKnowledgeArticleFromTicket,
-  getKnowledgeSuggestions,
-  getPhase2References,
-  listKnowledgeBase,
-  listTickets,
-  saveCustomer,
-  saveTicket,
-} from "@/lib/phase2.functions";
+import { createTicketWorkflow, getKnowledgeSuggestions, getPhase2References, listTickets } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/tickets")({
@@ -36,430 +29,474 @@ export const Route = createFileRoute("/_authenticated/tickets")({
 
 function TicketsPage() {
   const queryClient = useQueryClient();
-  const listFn = useServerFn(listTickets);
-  const saveFn = useServerFn(saveTicket);
-  const saveCustomerFn = useServerFn(saveCustomer);
-  const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
-  const createFromTicketFn = useServerFn(createKnowledgeArticleFromTicket);
   const refsFn = useServerFn(getPhase2References);
-  const kbFn = useServerFn(listKnowledgeBase);
+  const listFn = useServerFn(listTickets);
+  const createWorkflowFn = useServerFn(createTicketWorkflow);
+  const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
   const canManage = hasAnyPermission(roles, ["tickets.manage"]);
 
-  const { data: refs } = useQuery({ queryKey: ["phase2-refs"], queryFn: () => refsFn() });
-  const { data: knowledgeBase = [] } = useQuery({ queryKey: ["knowledge-base-all"], queryFn: () => kbFn() });
-  const { data: tickets = [] } = useQuery({ queryKey: ["tickets"], queryFn: () => listFn() });
-
   const [open, setOpen] = useState(false);
-  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "fault" | "inquiry" | "preventive_maintenance" | "new_installation">("all");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high" | "critical">("all");
+  const [engineerNeededFilter, setEngineerNeededFilter] = useState<"all" | "yes" | "no">("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
-  const [tableSearch, setTableSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const pageSize = 10;
+
+  const [quickCustomerEnabled, setQuickCustomerEnabled] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState({ name: "", phone: "", governorate: "", city: "", address: "" });
-  const [closeFeedback, setCloseFeedback] = useState({ rating: "success", notes: "" });
+
+  const [attachmentDraft, setAttachmentDraft] = useState<{ file_type: "image" | "battery_file" | "document"; file_path: string; original_name: string; file_size: string }>({ file_type: "document", file_path: "", original_name: "", file_size: "" });
+  const [attachments, setAttachments] = useState<Array<{ file_type: "image" | "battery_file" | "document"; file_path: string; original_name: string | null; file_size: number | null }>>([]);
+
   const [form, setForm] = useState({
-    id: "",
     customer_id: "",
     customer_system_id: "",
-    category_id: "",
-    error_code_id: "",
     ticket_type: "fault",
-    status: "new",
     priority: "medium",
+    title: "",
     description: "",
     affected_product_id: "",
+    error_code_id: "",
     error_code_text: "",
     solution_type: "",
     remote_solution_notes: "",
     knowledge_base_id: "",
+    create_knowledge_entry: false,
+    field_visit_needed: false,
+    assignment_engineer_id: "",
+    assignment_type: "repair_visit",
+    assignment_date: "",
+    assignment_notes: "",
+  });
+
+  const { data: refs } = useQuery({ queryKey: ["phase2-refs"], queryFn: () => refsFn() });
+
+  const { data: tickets = [] } = useQuery({
+    queryKey: ["tickets", search, statusFilter, typeFilter, priorityFilter, engineerNeededFilter, fromDate, toDate],
+    queryFn: () =>
+      listFn({
+        data: {
+          status: statusFilter === "all" ? null : statusFilter,
+          ticket_type: typeFilter === "all" ? null : typeFilter,
+          priority: priorityFilter === "all" ? null : priorityFilter,
+          engineer_needed: engineerNeededFilter === "all" ? null : engineerNeededFilter === "yes",
+          from_date: fromDate ? new Date(fromDate).toISOString() : null,
+          to_date: toDate ? `${toDate}T23:59:59.000Z` : null,
+          search: search || null,
+        },
+      }),
   });
 
   const { data: suggestedKnowledge = [] } = useQuery({
-    queryKey: ["knowledge-suggestions", form.affected_product_id, form.error_code_text, form.description],
+    queryKey: ["ticket-knowledge", form.affected_product_id, form.error_code_id, form.error_code_text, form.description],
     queryFn: () =>
       suggestKnowledgeFn({
         data: {
           affected_product_id: form.affected_product_id || null,
-          category_id: form.category_id || null,
           error_code_id: form.error_code_id || null,
           error_code_text: form.error_code_text || null,
-          issue_description: form.description || null,
-          limit: 4,
+          issue_description: `${form.title} ${form.description}`,
+          category_id: null,
+          limit: 5,
         },
       }),
-    enabled: Boolean(form.affected_product_id || form.error_code_text || form.description.trim().length >= 3),
+    enabled: Boolean(form.affected_product_id || form.error_code_id || form.error_code_text || form.description.trim().length >= 5),
   });
 
-  const tierLabel: Record<1 | 2 | 3 | 4, string> = {
-    1: "أولوية 1: نفس كود الخطأ + نفس المنتج",
-    2: "أولوية 2: نفس كود الخطأ",
-    3: "أولوية 3: نفس المنتج/الموديل",
-    4: "أولوية 4: كلمات مفتاحية",
-  };
-
   const filteredCustomers = useMemo(() => {
-    const q = customerSearch.toLowerCase();
-    return (refs?.customers ?? []).filter((item) => `${item.name} ${item.phone}`.toLowerCase().includes(q));
+    const query = customerSearch.toLowerCase().trim();
+    return (refs?.customers ?? []).filter((customer) => `${customer.name} ${customer.phone}`.toLowerCase().includes(query));
   }, [refs?.customers, customerSearch]);
 
-  const filteredTickets = useMemo(() => {
-    return tickets.filter((ticket) => {
-      if (statusFilter !== "all" && ticket.status !== statusFilter) return false;
-      const customerName = refs?.customers.find((c) => c.id === ticket.customer_id)?.name ?? "";
-      const bucket = `${ticket.description} ${ticket.error_code_text ?? ""} ${customerName}`.toLowerCase();
-      return bucket.includes(tableSearch.toLowerCase());
-    });
-  }, [tickets, statusFilter, tableSearch, refs?.customers]);
+  const availableSystems = useMemo(() => {
+    if (quickCustomerEnabled) return [];
+    return (refs?.customerSystems ?? []).filter((system) => !form.customer_id || system.customer_id === form.customer_id);
+  }, [refs?.customerSystems, form.customer_id, quickCustomerEnabled]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
-  const paginatedTickets = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredTickets.slice(start, start + pageSize);
-  }, [filteredTickets, page]);
+  const addAttachmentRow = () => {
+    if (!attachmentDraft.file_path.trim() || !attachmentDraft.file_path.includes(".")) {
+      toast.error("أدخل مسار ملف صحيح مع الامتداد");
+      return;
+    }
+    const parsedSize = attachmentDraft.file_size ? Number(attachmentDraft.file_size) : null;
+    if (parsedSize != null && (!Number.isFinite(parsedSize) || parsedSize < 0)) {
+      toast.error("حجم الملف يجب أن يكون رقمًا صحيحًا");
+      return;
+    }
 
-  useEffect(() => {
-    setPage(1);
-  }, [tableSearch, statusFilter]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    setAttachments((prev) => [
+      ...prev,
+      {
+        file_type: attachmentDraft.file_type as "image" | "battery_file" | "document",
+        file_path: attachmentDraft.file_path.trim(),
+        original_name: attachmentDraft.original_name.trim() || null,
+        file_size: parsedSize,
+      },
+    ]);
+    setAttachmentDraft({ file_type: "document", file_path: "", original_name: "", file_size: "" });
+  };
 
   const statusBadge = (status: string) => {
     if (status === "closed") return <Badge>مغلقة</Badge>;
-    if (status === "resolved_remote") return <Badge variant="secondary">حُلّت عن بُعد</Badge>;
-    if (status === "in_progress") return <Badge variant="outline">قيد التنفيذ</Badge>;
-    if (status === "assigned_field") return <Badge variant="secondary">مُحالة للميدان</Badge>;
+    if (status === "assigned_field") return <Badge variant="destructive">زيارة ميدانية</Badge>;
+    if (status === "resolved_remote") return <Badge variant="secondary">تم حلها عن بُعد</Badge>;
+    if (status === "in_progress") return <Badge variant="outline">قيد المعالجة</Badge>;
     return <Badge variant="outline">جديدة</Badge>;
+  };
+
+  const priorityBadge = (priority: string) => {
+    if (priority === "critical") return <Badge variant="destructive">حرجة</Badge>;
+    if (priority === "high") return <Badge variant="secondary">عالية</Badge>;
+    if (priority === "medium") return <Badge variant="outline">متوسطة</Badge>;
+    return <Badge variant="outline">منخفضة</Badge>;
+  };
+
+  const tierLabel: Record<number, string> = {
+    1: "تطابق تام: منتج + كود",
+    2: "تطابق كود العطل",
+    3: "تطابق المنتج",
+    4: "تشابه نصي",
+  };
+
+  const resetForm = () => {
+    setQuickCustomerEnabled(false);
+    setQuickCustomer({ name: "", phone: "", governorate: "", city: "", address: "" });
+    setAttachments([]);
+    setAttachmentDraft({ file_type: "document", file_path: "", original_name: "", file_size: "" });
+    setForm({
+      customer_id: "",
+      customer_system_id: "",
+      ticket_type: "fault",
+      priority: "medium",
+      title: "",
+      description: "",
+      affected_product_id: "",
+      error_code_id: "",
+      error_code_text: "",
+      solution_type: "",
+      remote_solution_notes: "",
+      knowledge_base_id: "",
+      create_knowledge_entry: false,
+      field_visit_needed: false,
+      assignment_engineer_id: "",
+      assignment_type: "repair_visit",
+      assignment_date: "",
+      assignment_notes: "",
+    });
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!quickCustomerEnabled && !form.customer_id) {
+      toast.error("اختر عميلًا أو فعّل إنشاء عميل سريع");
+      return;
+    }
+    if (quickCustomerEnabled && (!quickCustomer.name.trim() || quickCustomer.phone.trim().length < 8)) {
+      toast.error("بيانات العميل السريع غير مكتملة");
+      return;
+    }
+    if (form.title.trim().length < 3 || form.description.trim().length < 8) {
+      toast.error("أدخل عنوانًا ووصفًا واضحين للتذكرة");
+      return;
+    }
+    if (form.create_knowledge_entry && form.remote_solution_notes.trim().length < 10) {
+      toast.error("لإنشاء مادة معرفية جديدة، اكتب ملاحظات حل مفصلة (10 أحرف على الأقل)");
+      return;
+    }
+    if (form.field_visit_needed && !form.assignment_engineer_id) {
+      toast.error("حدد مهندسًا لإنشاء التكليف الميداني");
+      return;
+    }
+
     try {
-      await saveFn({
+      const result = await createWorkflowFn({
         data: {
-          id: form.id || undefined,
-          customer_id: form.customer_id,
+          customer_id: quickCustomerEnabled ? null : form.customer_id,
+          quick_customer: quickCustomerEnabled
+            ? {
+                name: quickCustomer.name,
+                phone: quickCustomer.phone,
+                governorate: quickCustomer.governorate || null,
+                city: quickCustomer.city || null,
+                address: quickCustomer.address || null,
+              }
+            : null,
           customer_system_id: form.customer_system_id || null,
-          category_id: form.category_id || null,
-          error_code_id: form.error_code_id || null,
           ticket_type: form.ticket_type as "fault" | "inquiry" | "preventive_maintenance" | "new_installation",
-          status: form.status as "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed",
           priority: form.priority as "low" | "medium" | "high" | "critical",
+          title: form.title,
           description: form.description,
           affected_product_id: form.affected_product_id || null,
+          error_code_id: form.error_code_id || null,
           error_code_text: form.error_code_text || null,
+          attachment_files: attachments,
           solution_type: (form.solution_type || null) as "remote" | "field" | "bring_to_center" | "no_fix_needed" | null,
           remote_solution_notes: form.remote_solution_notes || null,
           knowledge_base_id: form.knowledge_base_id || null,
-          knowledge_feedback_rating: form.status === "closed" ? (closeFeedback.rating as "success" | "failure" | "partial") : null,
-          knowledge_feedback_notes: form.status === "closed" ? closeFeedback.notes || null : null,
-          resolved_by: null,
-          resolved_at: null,
+          create_knowledge_entry: form.create_knowledge_entry,
+          field_visit_needed: form.field_visit_needed,
+          assignment: form.field_visit_needed
+            ? {
+                engineer_id: form.assignment_engineer_id,
+                assignment_type: form.assignment_type as "repair_visit" | "new_installation",
+                scheduled_date: form.assignment_date ? new Date(form.assignment_date).toISOString() : null,
+                notes: form.assignment_notes || null,
+              }
+            : null,
         },
       });
-      toast.success("تم حفظ التذكرة");
-      setOpen(false);
-      setForm({ id: "", customer_id: "", customer_system_id: "", category_id: "", error_code_id: "", ticket_type: "fault", status: "new", priority: "medium", description: "", affected_product_id: "", error_code_text: "", solution_type: "", remote_solution_notes: "", knowledge_base_id: "" });
-      setCloseFeedback({ rating: "success", notes: "" });
-      queryClient.invalidateQueries({ queryKey: ["tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "تعذر حفظ التذكرة");
-    }
-  };
 
-  const submitQuickCustomer = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      await saveCustomerFn({
-        data: {
-          name: quickCustomer.name,
-          phone: quickCustomer.phone,
-          governorate: quickCustomer.governorate || null,
-          city: quickCustomer.city || null,
-          address: quickCustomer.address || null,
-          location_coordinates: null,
-          notes: null,
-        },
-      });
-      toast.success("تمت إضافة العميل ويمكن اختياره الآن");
-      setQuickCustomerOpen(false);
-      setQuickCustomer({ name: "", phone: "", governorate: "", city: "", address: "" });
+      toast.success(
+        result.assignment_id
+          ? "تم إنشاء التذكرة والتكليف الميداني بنجاح"
+          : result.knowledge_id
+            ? "تم إنشاء التذكرة ومادة المعرفة"
+            : "تم إنشاء التذكرة بنجاح",
+      );
+      setOpen(false);
+      resetForm();
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["phase2-refs"] });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "تعذر إضافة العميل");
-    }
-  };
-
-  const applyKnowledgeSuggestion = async (knowledgeId: string) => {
-    const selected = knowledgeBase.find((item) => item.id === knowledgeId);
-    if (!selected || !form.id) {
-      setForm((prev) => ({
-        ...prev,
-        knowledge_base_id: knowledgeId,
-        remote_solution_notes: prev.remote_solution_notes || selected?.solution_steps || "",
-      }));
-      return;
-    }
-
-    try {
-      await saveFn({
-        data: {
-          id: form.id,
-          customer_id: form.customer_id,
-          customer_system_id: form.customer_system_id || null,
-          category_id: form.category_id || null,
-          error_code_id: form.error_code_id || null,
-          ticket_type: form.ticket_type as "fault" | "inquiry" | "preventive_maintenance" | "new_installation",
-          status: form.status as "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed",
-          priority: form.priority as "low" | "medium" | "high" | "critical",
-          description: form.description,
-          affected_product_id: form.affected_product_id || null,
-          error_code_text: form.error_code_text || null,
-          solution_type: "remote",
-          remote_solution_notes: selected.solution_steps,
-          knowledge_base_id: selected.id,
-          resolved_by: null,
-          resolved_at: null,
-        },
-      });
-
-      toast.success("تم ربط التذكرة بالحل المقترح");
-      queryClient.invalidateQueries({ queryKey: ["tickets"] });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "تعذر تطبيق الحل المقترح");
-    }
-  };
-
-  const createKnowledgeFromTicket = async () => {
-    if (!form.id) {
-      toast.error("احفظ التذكرة أولاً قبل إنشاء مادة معرفية منها");
-      return;
-    }
-    try {
-      const result = await createFromTicketFn({ data: { ticket_id: form.id, title: null } });
-      if (result.created) {
-        toast.success("تم إنشاء مادة معرفية وربطها بالتذكرة");
-        setForm((prev) => ({ ...prev, knowledge_base_id: result.articleId }));
-      } else {
-        toast.info("يوجد مادة مشابهة بالفعل وتم منع التكرار");
-      }
-      queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
-      queryClient.invalidateQueries({ queryKey: ["tickets"] });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "تعذر إنشاء مادة المعرفة من التذكرة");
+      toast.error(error instanceof Error ? error.message : "تعذر إنشاء التذكرة");
     }
   };
 
   return (
-    <AppShell roles={roles} title="التذاكر وحالات الدعم">
-      <div className="space-y-4">
-        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 md:flex-row md:items-center">
-          {canManage && <Button onClick={() => setOpen(true)}>إضافة تذكرة</Button>}
-          <Input value={tableSearch} onChange={(e) => setTableSearch(e.target.value)} placeholder="بحث بالوصف/العميل/كود الخطأ" className="md:max-w-sm" />
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="md:max-w-[220px]"><SelectValue placeholder="فلترة الحالة" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">كل الحالات</SelectItem>
-              <SelectItem value="new">جديدة</SelectItem>
-              <SelectItem value="in_progress">قيد التنفيذ</SelectItem>
-              <SelectItem value="resolved_remote">حُلّت عن بُعد</SelectItem>
-              <SelectItem value="assigned_field">مُحالة للميدان</SelectItem>
-              <SelectItem value="closed">مغلقة</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <AppShell roles={roles} title="إدارة التذاكر">
+      <div className="space-y-4" dir="rtl">
+        <Card>
+          <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <CardTitle className="text-base">قائمة التذاكر</CardTitle>
+            {canManage && <Button onClick={() => setOpen(true)}>تذكرة جديدة</Button>}
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-2 md:grid-cols-7">
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث نصي" className="md:col-span-2" />
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed")}><SelectTrigger><SelectValue placeholder="الحالة" /></SelectTrigger><SelectContent><SelectItem value="all">كل الحالات</SelectItem><SelectItem value="new">جديدة</SelectItem><SelectItem value="in_progress">قيد المعالجة</SelectItem><SelectItem value="resolved_remote">محلولة عن بعد</SelectItem><SelectItem value="assigned_field">ميداني</SelectItem><SelectItem value="closed">مغلقة</SelectItem></SelectContent></Select>
+            <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as "all" | "fault" | "inquiry" | "preventive_maintenance" | "new_installation")}><SelectTrigger><SelectValue placeholder="النوع" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأنواع</SelectItem><SelectItem value="fault">عطل</SelectItem><SelectItem value="inquiry">استفسار</SelectItem><SelectItem value="preventive_maintenance">صيانة دورية</SelectItem><SelectItem value="new_installation">تركيب جديد</SelectItem></SelectContent></Select>
+            <Select value={priorityFilter} onValueChange={(value) => setPriorityFilter(value as "all" | "low" | "medium" | "high" | "critical")}><SelectTrigger><SelectValue placeholder="الأولوية" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأولويات</SelectItem><SelectItem value="low">منخفضة</SelectItem><SelectItem value="medium">متوسطة</SelectItem><SelectItem value="high">عالية</SelectItem><SelectItem value="critical">حرجة</SelectItem></SelectContent></Select>
+            <Select value={engineerNeededFilter} onValueChange={(value) => setEngineerNeededFilter(value as "all" | "yes" | "no")}><SelectTrigger><SelectValue placeholder="حاجة ميدانية" /></SelectTrigger><SelectContent><SelectItem value="all">الكل</SelectItem><SelectItem value="yes">تحتاج مهندس</SelectItem><SelectItem value="no">بدون مهندس</SelectItem></SelectContent></Select>
+            <div className="grid grid-cols-2 gap-2 md:col-span-2">
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="rounded-lg border bg-card">
           <Table>
-            <TableHeader><TableRow><TableHead>العميل</TableHead><TableHead>النوع</TableHead><TableHead>التصنيف</TableHead><TableHead>كود العطل</TableHead><TableHead>الحالة</TableHead><TableHead>الأولوية</TableHead><TableHead>الوصف</TableHead>{canManage && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
+            <TableHeader>
+              <TableRow>
+                <TableHead>العميل</TableHead>
+                <TableHead>العنوان</TableHead>
+                <TableHead>النوع</TableHead>
+                <TableHead>الحالة</TableHead>
+                <TableHead>الأولوية</TableHead>
+                <TableHead>المنتج/الكود</TableHead>
+                <TableHead>التاريخ</TableHead>
+              </TableRow>
+            </TableHeader>
             <TableBody>
-              {paginatedTickets.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">لا توجد تذاكر مطابقة حاليًا.</TableCell></TableRow>
-              ) : paginatedTickets.map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell>{refs?.customers.find((c) => c.id === t.customer_id)?.name ?? "—"}</TableCell>
-                  <TableCell>{t.ticket_type}</TableCell>
-                  <TableCell>{refs?.productCategories?.find((cat) => cat.id === t.category_id)?.name_ar ?? "—"}</TableCell>
-                  <TableCell>{refs?.errorCodes?.find((code) => code.id === t.error_code_id)?.code ?? t.error_code_text ?? "—"}</TableCell>
-                  <TableCell>{statusBadge(t.status)}</TableCell>
-                  <TableCell>{t.priority}</TableCell>
-                  <TableCell className="max-w-[420px] truncate">{t.description}</TableCell>
-                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", category_id: t.category_id ?? "", error_code_id: t.error_code_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
-                </TableRow>
-              ))}
+              {tickets.length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة.</TableCell></TableRow>
+              ) : (
+                tickets.map((ticket) => {
+                  const customer = refs?.customers.find((item) => item.id === ticket.customer_id)?.name ?? "—";
+                  const product = refs?.products.find((item) => item.id === ticket.affected_product_id)?.model ?? "—";
+                  const title = ticket.description.split("\n")[0]?.trim() || "بدون عنوان";
+                  return (
+                    <TableRow key={ticket.id}>
+                      <TableCell>{customer}</TableCell>
+                      <TableCell className="max-w-[220px] truncate">{title}</TableCell>
+                      <TableCell>{ticket.ticket_type}</TableCell>
+                      <TableCell>{statusBadge(ticket.status)}</TableCell>
+                      <TableCell>{priorityBadge(ticket.priority)}</TableCell>
+                      <TableCell>{product} / {ticket.error_code_text ?? "—"}</TableCell>
+                      <TableCell>{new Date(ticket.created_at).toLocaleDateString("ar-EG")}</TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
             </TableBody>
           </Table>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">صفحة {page} من {totalPages}</p>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>السابق</Button>
-            <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>التالي</Button>
-          </div>
         </div>
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>{form.id ? "تعديل تذكرة" : "إضافة تذكرة"}</DialogTitle></DialogHeader>
-          <form className="space-y-3" onSubmit={submit}>
-            <div className="space-y-2">
-              <Label>بحث عميل بالاسم أو الهاتف</Label>
-              <Input value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} placeholder="اكتب الاسم أو الهاتف" />
-              <div className="flex gap-2">
-                <Select value={form.customer_id} onValueChange={(v) => setForm((p) => ({ ...p, customer_id: v }))}>
-                  <SelectTrigger><SelectValue placeholder="اختر عميل" /></SelectTrigger>
-                  <SelectContent>
-                    {filteredCustomers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name} - {c.phone}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Button type="button" variant="outline" onClick={() => setQuickCustomerOpen(true)}>إضافة عميل سريع</Button>
-              </div>
-            </div>
-            <div className="space-y-2"><Label>نظام العميل</Label><Select value={form.customer_system_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, customer_system_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(refs?.customerSystems ?? []).filter((s) => !form.customer_id || s.customer_id === form.customer_id).map((s) => <SelectItem key={s.id} value={s.id}>{s.system_name}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="space-y-2"><Label>النوع</Label><Select value={form.ticket_type} onValueChange={(v) => setForm((p) => ({ ...p, ticket_type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fault">عطل</SelectItem><SelectItem value="inquiry">استفسار</SelectItem><SelectItem value="preventive_maintenance">صيانة دورية</SelectItem><SelectItem value="new_installation">تركيب جديد</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>الحالة</Label><Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="new">جديدة</SelectItem><SelectItem value="in_progress">قيد التنفيذ</SelectItem><SelectItem value="resolved_remote">حُلّت عن بُعد</SelectItem><SelectItem value="assigned_field">مُحالة للميدان</SelectItem><SelectItem value="closed">مغلقة</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>الأولوية</Label><Select value={form.priority} onValueChange={(v) => setForm((p) => ({ ...p, priority: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">منخفضة</SelectItem><SelectItem value="medium">متوسطة</SelectItem><SelectItem value="high">عالية</SelectItem><SelectItem value="critical">حرجة</SelectItem></SelectContent></Select></div>
-            </div>
-            <div className="space-y-2"><Label>الوصف</Label><Textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} required /></div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2"><Label>المنتج المتأثر</Label><Select value={form.affected_product_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, affected_product_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">غير محدد</SelectItem>{(refs?.products ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.model}</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2"><Label>مرجع مادة معرفية</Label><Select value={form.knowledge_base_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, knowledge_base_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(refs?.knowledge ?? []).map((k) => <SelectItem key={k.id} value={k.id}>{k.title}</SelectItem>)}</SelectContent></Select></div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>التصنيف</Label>
-                <Select value={form.category_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, category_id: v === "none" ? "" : v }))}>
-                  <SelectTrigger><SelectValue placeholder="اختر تصنيف" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">غير محدد</SelectItem>
-                    {(refs?.productCategories ?? []).map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>{cat.name_ar}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>كود العطل</Label>
-                <Select
-                  value={form.error_code_id || "none"}
-                  onValueChange={(v) => {
-                    if (v === "none") {
-                      setForm((p) => ({ ...p, error_code_id: "" }));
-                      return;
-                    }
-                    const selected = (refs?.errorCodes ?? []).find((code) => code.id === v);
-                    setForm((p) => ({ ...p, error_code_id: v, error_code_text: selected?.code ?? p.error_code_text }));
-                  }}
-                >
-                  <SelectTrigger><SelectValue placeholder="اختر كود العطل" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">غير محدد</SelectItem>
-                    {(refs?.errorCodes ?? []).map((code) => (
-                      <SelectItem key={code.id} value={code.id}>{code.code} - {code.description ?? code.category}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2"><Label>رمز الخطأ النصي</Label><Input value={form.error_code_text} onChange={(e) => setForm((p) => ({ ...p, error_code_text: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>نوع الحل</Label><Select value={form.solution_type || "none"} onValueChange={(v) => setForm((p) => ({ ...p, solution_type: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem><SelectItem value="remote">عن بُعد</SelectItem><SelectItem value="field">ميداني</SelectItem><SelectItem value="bring_to_center">إحضار للمركز</SelectItem><SelectItem value="no_fix_needed">لا يتطلب إصلاح</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>ملاحظات الحل عن بُعد</Label><Textarea value={form.remote_solution_notes} onChange={(e) => setForm((p) => ({ ...p, remote_solution_notes: e.target.value }))} /></div>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl" dir="rtl">
+          <DialogHeader><DialogTitle>إنشاء تذكرة جديدة</DialogTitle></DialogHeader>
+          <form className="space-y-4" onSubmit={submit}>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">بيانات العميل</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between rounded border p-2">
+                  <Label>إنشاء عميل سريع أثناء المكالمة</Label>
+                  <Switch checked={quickCustomerEnabled} onCheckedChange={setQuickCustomerEnabled} />
+                </div>
 
-            {canManage && form.id && form.remote_solution_notes.trim().length >= 10 && (
-              <div className="rounded border p-3">
-                <p className="text-sm mb-2">لو الحل الجديد مفيد وغير موجود بقاعدة المعرفة، يمكنك إنشاؤه مباشرة من هذه التذكرة.</p>
-                <Button type="button" variant="outline" onClick={createKnowledgeFromTicket}>
-                  إنشاء مادة معرفة من التذكرة
-                </Button>
-              </div>
-            )}
-
-            {form.status === "closed" && form.knowledge_base_id && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">تقييم نتيجة استخدام الحل عند إغلاق التذكرة</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
+                {quickCustomerEnabled ? (
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>التقييم</Label>
-                      <Select value={closeFeedback.rating} onValueChange={(v) => setCloseFeedback((prev) => ({ ...prev, rating: v }))}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="success">ناجح</SelectItem>
-                          <SelectItem value="failure">فاشل</SelectItem>
-                          <SelectItem value="partial">جزئي</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>ملاحظات التقييم (اختياري)</Label>
-                      <Input value={closeFeedback.notes} onChange={(e) => setCloseFeedback((prev) => ({ ...prev, notes: e.target.value }))} />
-                    </div>
+                    <Input placeholder="اسم العميل" value={quickCustomer.name} onChange={(e) => setQuickCustomer((p) => ({ ...p, name: e.target.value }))} />
+                    <Input placeholder="رقم الهاتف" value={quickCustomer.phone} onChange={(e) => setQuickCustomer((p) => ({ ...p, phone: e.target.value }))} />
+                    <Input placeholder="المحافظة" value={quickCustomer.governorate} onChange={(e) => setQuickCustomer((p) => ({ ...p, governorate: e.target.value }))} />
+                    <Input placeholder="المدينة" value={quickCustomer.city} onChange={(e) => setQuickCustomer((p) => ({ ...p, city: e.target.value }))} />
+                    <Input className="md:col-span-2" placeholder="العنوان" value={quickCustomer.address} onChange={(e) => setQuickCustomer((p) => ({ ...p, address: e.target.value }))} />
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                ) : (
+                  <>
+                    <Input value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} placeholder="ابحث بالاسم أو الهاتف" />
+                    <Select value={form.customer_id} onValueChange={(value) => setForm((prev) => ({ ...prev, customer_id: value, customer_system_id: "" }))}>
+                      <SelectTrigger><SelectValue placeholder="اختر العميل" /></SelectTrigger>
+                      <SelectContent>
+                        {filteredCustomers.map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id}>{customer.name} - {customer.phone}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+
+                <Select value={form.customer_system_id || "none"} onValueChange={(value) => setForm((prev) => ({ ...prev, customer_system_id: value === "none" ? "" : value }))}>
+                  <SelectTrigger><SelectValue placeholder="نظام العميل (اختياري)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">بدون نظام محدد</SelectItem>
+                    {availableSystems.map((system) => <SelectItem key={system.id} value={system.id}>{system.system_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">الحلول المقترحة من قاعدة المعرفة</CardTitle>
-              </CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">بيانات التذكرة</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                  <Select value={form.ticket_type} onValueChange={(value) => setForm((prev) => ({ ...prev, ticket_type: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fault">عطل</SelectItem><SelectItem value="inquiry">استفسار</SelectItem><SelectItem value="preventive_maintenance">صيانة دورية</SelectItem><SelectItem value="new_installation">تركيب جديد</SelectItem></SelectContent></Select>
+                  <Select value={form.priority} onValueChange={(value) => setForm((prev) => ({ ...prev, priority: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">منخفضة</SelectItem><SelectItem value="medium">متوسطة</SelectItem><SelectItem value="high">عالية</SelectItem><SelectItem value="critical">حرجة</SelectItem></SelectContent></Select>
+                  <Select value={form.affected_product_id || "none"} onValueChange={(value) => setForm((prev) => ({ ...prev, affected_product_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="المنتج المتأثر" /></SelectTrigger><SelectContent><SelectItem value="none">غير محدد</SelectItem>{(refs?.products ?? []).map((product) => <SelectItem key={product.id} value={product.id}>{product.model}</SelectItem>)}</SelectContent></Select>
+                  <Select value={form.error_code_id || "none"} onValueChange={(value) => {
+                    if (value === "none") {
+                      setForm((prev) => ({ ...prev, error_code_id: "" }));
+                      return;
+                    }
+                    const selected = (refs?.errorCodes ?? []).find((code) => code.id === value);
+                    setForm((prev) => ({ ...prev, error_code_id: value, error_code_text: selected?.code ?? prev.error_code_text }));
+                  }}><SelectTrigger><SelectValue placeholder="كود العطل" /></SelectTrigger><SelectContent><SelectItem value="none">بدون كود</SelectItem>{(refs?.errorCodes ?? []).map((code) => <SelectItem key={code.id} value={code.id}>{code.code}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <Input placeholder="عنوان التذكرة" value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} />
+                <Textarea placeholder="وصف المشكلة" value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} />
+                <Input placeholder="كود الخطأ النصي (اختياري)" value={form.error_code_text} onChange={(e) => setForm((prev) => ({ ...prev, error_code_text: e.target.value }))} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">المرفقات</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+                  <Select value={attachmentDraft.file_type} onValueChange={(value) => setAttachmentDraft((prev) => ({ ...prev, file_type: value as "image" | "battery_file" | "document" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="document">مستند</SelectItem><SelectItem value="image">صورة</SelectItem><SelectItem value="battery_file">ملف بطارية</SelectItem></SelectContent></Select>
+                  <Input className="md:col-span-2" placeholder="مسار الملف (مثال: uploads/t1.pdf)" value={attachmentDraft.file_path} onChange={(e) => setAttachmentDraft((prev) => ({ ...prev, file_path: e.target.value }))} />
+                  <Input placeholder="اسم الملف" value={attachmentDraft.original_name} onChange={(e) => setAttachmentDraft((prev) => ({ ...prev, original_name: e.target.value }))} />
+                  <Input placeholder="الحجم بايت" value={attachmentDraft.file_size} onChange={(e) => setAttachmentDraft((prev) => ({ ...prev, file_size: e.target.value }))} />
+                </div>
+                <Button type="button" variant="outline" onClick={addAttachmentRow}>إضافة مرفق</Button>
+                {attachments.length > 0 && (
+                  <div className="rounded border">
+                    <Table>
+                      <TableHeader><TableRow><TableHead>النوع</TableHead><TableHead>المسار</TableHead><TableHead>الاسم</TableHead><TableHead>إجراء</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {attachments.map((item, index) => (
+                          <TableRow key={`${item.file_path}-${index}`}>
+                            <TableCell>{item.file_type}</TableCell>
+                            <TableCell className="max-w-[320px] truncate">{item.file_path}</TableCell>
+                            <TableCell>{item.original_name ?? "—"}</TableCell>
+                            <TableCell><Button type="button" size="sm" variant="outline" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== index))}>حذف</Button></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">اقتراحات المعرفة (ديناميكية)</CardTitle></CardHeader>
               <CardContent className="space-y-2">
                 {suggestedKnowledge.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">لا توجد نتائج مطابقة حتى الآن.</p>
+                  <p className="text-sm text-muted-foreground">ستظهر الاقتراحات تلقائيًا عند اختيار المنتج/كود العطل أو كتابة وصف كافٍ.</p>
                 ) : (
                   suggestedKnowledge.map((item) => (
                     <div key={item.id} className="rounded border p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-medium text-sm">{item.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-2">{item.issue_description}</p>
-                           <div className="mt-1 flex flex-wrap gap-2">
-                             <Badge>{tierLabel[item.priority_tier as 1 | 2 | 3 | 4]}</Badge>
-                            <Badge variant="secondary">فاعلية {item.effectiveness_rate}%</Badge>
-                            <Badge variant="outline">استخدام {item.success_count + item.fail_count}</Badge>
-                          </div>
-                           <p className="mt-2 text-xs text-muted-foreground">سبب الاقتراح: {item.match_reason}</p>
-                        </div>
-                        <Button type="button" size="sm" onClick={() => applyKnowledgeSuggestion(item.id)}>
-                          استخدم هذا الحل
-                        </Button>
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-sm">{item.title}</p>
+                        <Badge>{tierLabel[item.priority_tier] ?? "مطابقة"}</Badge>
+                        <Badge variant="secondary">{item.effectiveness_rate}%</Badge>
                       </div>
+                      <p className="text-xs text-muted-foreground">{item.match_reason}</p>
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{item.solution_steps}</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            knowledge_base_id: item.id,
+                            remote_solution_notes: prev.remote_solution_notes || item.solution_steps,
+                            solution_type: prev.solution_type || "remote",
+                          }))
+                        }
+                      >
+                        تطبيق هذا الاقتراح
+                      </Button>
                     </div>
                   ))
                 )}
               </CardContent>
             </Card>
 
-            <div className="flex justify-start gap-2"><Button type="submit">حفظ</Button><Button type="button" variant="outline" onClick={() => setOpen(false)}>إلغاء</Button></div>
-          </form>
-        </DialogContent>
-      </Dialog>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">المعالجة عن بُعد</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <Select value={form.solution_type || "none"} onValueChange={(value) => setForm((prev) => ({ ...prev, solution_type: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="نوع الحل" /></SelectTrigger><SelectContent><SelectItem value="none">غير محدد</SelectItem><SelectItem value="remote">حل عن بُعد</SelectItem><SelectItem value="field">حل ميداني</SelectItem><SelectItem value="bring_to_center">إحضار للمركز</SelectItem><SelectItem value="no_fix_needed">لا يحتاج إصلاح</SelectItem></SelectContent></Select>
+                  <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((prev) => ({ ...prev, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="ربط مقال معرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون ربط</SelectItem>{(refs?.knowledge ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select>
+                </div>
+                <Textarea placeholder="ملاحظات الحل عن بُعد" value={form.remote_solution_notes} onChange={(e) => setForm((prev) => ({ ...prev, remote_solution_notes: e.target.value }))} />
+                <div className="flex items-center justify-between rounded border p-2">
+                  <Label>إنشاء مادة معرفة جديدة من هذه التذكرة</Label>
+                  <Switch checked={form.create_knowledge_entry} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, create_knowledge_entry: checked }))} />
+                </div>
+              </CardContent>
+            </Card>
 
-      <Dialog open={quickCustomerOpen} onOpenChange={setQuickCustomerOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>إضافة عميل سريع</DialogTitle>
-          </DialogHeader>
-          <form className="space-y-3" onSubmit={submitQuickCustomer}>
-            <div className="space-y-2"><Label>الاسم</Label><Input value={quickCustomer.name} onChange={(e) => setQuickCustomer((p) => ({ ...p, name: e.target.value }))} required /></div>
-            <div className="space-y-2"><Label>الهاتف</Label><Input value={quickCustomer.phone} onChange={(e) => setQuickCustomer((p) => ({ ...p, phone: e.target.value }))} required /></div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="space-y-2"><Label>المحافظة</Label><Input value={quickCustomer.governorate} onChange={(e) => setQuickCustomer((p) => ({ ...p, governorate: e.target.value }))} /></div>
-              <div className="space-y-2"><Label>المدينة</Label><Input value={quickCustomer.city} onChange={(e) => setQuickCustomer((p) => ({ ...p, city: e.target.value }))} /></div>
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">الزيارة الميدانية والتكليف</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between rounded border p-2">
+                  <Label>تحتاج زيارة ميدانية</Label>
+                  <Switch checked={form.field_visit_needed} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, field_visit_needed: checked }))} />
+                </div>
+                {form.field_visit_needed && (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                    <Select value={form.assignment_engineer_id} onValueChange={(value) => setForm((prev) => ({ ...prev, assignment_engineer_id: value }))}><SelectTrigger><SelectValue placeholder="المهندس" /></SelectTrigger><SelectContent>{(refs?.engineers ?? []).map((engineer) => <SelectItem key={engineer.id} value={engineer.id}>{engineer.name}</SelectItem>)}</SelectContent></Select>
+                    <Select value={form.assignment_type} onValueChange={(value) => setForm((prev) => ({ ...prev, assignment_type: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="repair_visit">زيارة إصلاح</SelectItem><SelectItem value="new_installation">تركيب جديد</SelectItem></SelectContent></Select>
+                    <Input type="datetime-local" value={form.assignment_date} onChange={(e) => setForm((prev) => ({ ...prev, assignment_date: e.target.value }))} />
+                    <Textarea className="md:col-span-3" placeholder="ملاحظات التكليف" value={form.assignment_notes} onChange={(e) => setForm((prev) => ({ ...prev, assignment_notes: e.target.value }))} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex justify-start gap-2">
+              <Button type="submit">حفظ التذكرة</Button>
+              <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm(); }}>إلغاء</Button>
             </div>
-            <div className="space-y-2"><Label>العنوان</Label><Input value={quickCustomer.address} onChange={(e) => setQuickCustomer((p) => ({ ...p, address: e.target.value }))} /></div>
-            <div className="flex gap-2"><Button type="submit">حفظ</Button><Button type="button" variant="outline" onClick={() => setQuickCustomerOpen(false)}>إلغاء</Button></div>
           </form>
         </DialogContent>
       </Dialog>
