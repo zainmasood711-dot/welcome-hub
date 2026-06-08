@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LogOut,
   Settings,
@@ -97,6 +97,7 @@ const navItems: NavItem[] = [
 
 export function AppShell({ children, title, roles }: AppShellProps) {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const visibleItems = navItems.filter((item) => {
     if (!item.permissions) return true;
@@ -125,7 +126,7 @@ export function AppShell({ children, title, roles }: AppShellProps) {
                   return;
                 }
                 toast.success("تم تسجيل الخروج");
-                window.location.href = "/auth";
+                navigate({ to: "/auth", replace: true });
               }}
             >
               <LogOut className="h-4 w-4" />
