@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -128,7 +128,7 @@ function EngineersPage() {
     setEditorOpen(true);
   };
 
-  const submitEngineer = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitEngineer = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
       await saveEngineerFn({
@@ -154,7 +154,7 @@ function EngineersPage() {
     }
   };
 
-  const submitLink = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!profileId || !engineerId) {
       toast.error("يرجى اختيار المستخدم والمهندس");
