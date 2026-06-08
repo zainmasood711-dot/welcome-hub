@@ -849,9 +849,7 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
 
     const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
     const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
-    const partialCount = (feedbackRows ?? []).filter((row) => row.rating === "partial").length;
-    const total = successCount + failCount + partialCount;
-    const effectivenessRate = total === 0 ? 0 : Number((((successCount + partialCount * 0.5) / total) * 100).toFixed(2));
+    const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
 
     const { error: updateError } = await supabase
       .from("knowledge_base")
