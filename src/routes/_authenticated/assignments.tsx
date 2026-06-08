@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { createAssignmentFromSource, getPhase2References, listAssignments, saveAssignment, saveKnowledgeFeedbackFromContext, submitAssignmentReport } from "@/lib/phase2.functions";
+import { confirmDatabaseAndSeedDemo, createAssignmentFromSource, getPhase2References, listAssignments, saveAssignment, saveKnowledgeFeedbackFromContext, submitAssignmentReport } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/assignments")({
@@ -44,6 +44,7 @@ function AssignmentsPage() {
   const saveFn = useServerFn(saveAssignment);
   const submitFn = useServerFn(submitAssignmentReport);
   const saveKnowledgeFeedbackContextFn = useServerFn(saveKnowledgeFeedbackFromContext);
+  const seedFn = useServerFn(confirmDatabaseAndSeedDemo);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
   const isFieldEngineer = roles.includes("field_engineer");
@@ -76,6 +77,7 @@ function AssignmentsPage() {
   const pageSize = 10;
   const [sourceType, setSourceType] = useState<"ticket" | "system">("ticket");
   const [form, setForm] = useState({ id: "", ticket_id: "", customer_system_id: "", engineer_id: "", assignment_type: "repair_visit", scheduled_date: "", status: "pending", work_done: "", difficulties: "", recommendations: "" });
+  const [isSeeding, setIsSeeding] = useState(false);
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -238,6 +240,31 @@ function AssignmentsPage() {
   return (
     <AppShell roles={roles} title="المهام الميدانية والتركيبات">
       <div className="space-y-4">
+        {canManage && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={isSeeding}
+              onClick={async () => {
+                try {
+                  setIsSeeding(true);
+                  await seedFn();
+                  toast.success("تم تجهيز بيانات تجريبية للمراجعة");
+                  queryClient.invalidateQueries({ queryKey: ["assignments"] });
+                  queryClient.invalidateQueries({ queryKey: ["phase2-refs"] });
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : "تعذر تجهيز البيانات التجريبية");
+                } finally {
+                  setIsSeeding(false);
+                }
+              }}
+            >
+              {isSeeding ? "جاري تجهيز البيانات..." : "تجهيز بيانات تجريبية"}
+            </Button>
+            <span className="text-xs text-muted-foreground">لتجربة مسار المهندس الميداني بسرعة.</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           {isOnline ? (
             <Badge variant="secondary">متصل</Badge>
