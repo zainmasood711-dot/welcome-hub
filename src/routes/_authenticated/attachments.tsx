@@ -39,10 +39,22 @@ function AttachmentsPage() {
   const { data: attachments = [] } = useQuery({ queryKey: ["attachments"], queryFn: () => listFn() });
 
   const [open, setOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [form, setForm] = useState({ id: "", attachable_type: "ticket", attachable_id: "", file_type: "document", file_path: "", original_name: "", file_size: "", description: "" });
 
-  const maxBytes = 20 * 1024 * 1024;
+  const maxImageBytes = 5 * 1024 * 1024;
+  const maxFileBytes = 20 * 1024 * 1024;
+  const imageExts = new Set(["jpg", "jpeg", "png", "webp"]);
+  const documentExts = new Set(["pdf", "csv", "xlsx", "xls", "txt"]);
+  const batteryExts = new Set(["log", "csv", "txt"]);
+
+  const getExtension = (name: string) => name.trim().toLowerCase().split(".").pop() ?? "";
+
+  const getAllowedExtsByType = (fileType: string) => {
+    if (fileType === "image") return imageExts;
+    if (fileType === "battery_file") return batteryExts;
+    return documentExts;
+  };
 
   const attachableOptions = useMemo(() => {
     if (form.attachable_type === "ticket") {
@@ -57,57 +69,99 @@ function AttachmentsPage() {
   }, [form.attachable_type, refs?.assignments, refs?.knowledge, refs?.tickets]);
 
   const onSelectFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (!file) {
-      setSelectedFile(null);
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) {
+      setSelectedFiles([]);
       return;
     }
 
-    if (file.size > maxBytes) {
-      toast.error("حجم الملف يتجاوز 20MB");
+    const allowedExts = getAllowedExtsByType(form.file_type);
+    const invalidType = files.find((file) => !allowedExts.has(getExtension(file.name)));
+    if (invalidType) {
+      toast.error("امتداد الملف غير مسموح لنوع المرفق المختار");
       event.target.value = "";
+      setSelectedFiles([]);
       return;
     }
 
-    setSelectedFile(file);
-    setForm((prev) => ({
-      ...prev,
-      original_name: file.name,
-      file_size: String(file.size),
-    }));
+    const invalidSize = files.find((file) => {
+      if (form.file_type === "image") return file.size > maxImageBytes;
+      return file.size > maxFileBytes;
+    });
+    if (invalidSize) {
+      toast.error(form.file_type === "image" ? "حجم الصورة يتجاوز 5MB" : "حجم الملف يتجاوز 20MB");
+      event.target.value = "";
+      setSelectedFiles([]);
+      return;
+    }
+
+    setSelectedFiles(files);
+    if (files.length === 1) {
+      setForm((prev) => ({
+        ...prev,
+        original_name: files[0].name,
+        file_size: String(files[0].size),
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        original_name: "",
+        file_size: "",
+      }));
+    }
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
-      let filePath = form.file_path;
-
-      if (selectedFile) {
-        const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const generatedPath = `${form.attachable_type}/${form.attachable_id}/${Date.now()}-${safeName}`;
-        const { error: uploadError } = await supabase.storage.from("field-attachments").upload(generatedPath, selectedFile, {
-          upsert: false,
-          contentType: selectedFile.type || undefined,
-        });
-        if (uploadError) throw new Error(uploadError.message);
-        filePath = generatedPath;
+      if (!form.attachable_id) {
+        throw new Error("اختر العنصر المرتبط أولاً");
       }
 
-      await saveFn({
-        data: {
-          id: form.id || undefined,
-          attachable_type: form.attachable_type as "ticket" | "assignment" | "knowledge_base",
-          attachable_id: form.attachable_id,
-          file_type: form.file_type as "image" | "battery_file" | "document",
-          file_path: filePath,
-          original_name: form.original_name || null,
-          file_size: form.file_size ? Number(form.file_size) : null,
-          description: form.description || null,
-        },
-      });
+      const filesToUpload = selectedFiles;
+      if (filesToUpload.length > 1 && form.id) {
+        throw new Error("لا يمكن رفع عدة ملفات أثناء تعديل سجل موجود");
+      }
+
+      if (filesToUpload.length > 0) {
+        for (const file of filesToUpload) {
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const generatedPath = `${form.attachable_type}/${form.attachable_id}/${Date.now()}-${safeName}`;
+          const { error: uploadError } = await supabase.storage.from("field-attachments").upload(generatedPath, file, {
+            upsert: false,
+            contentType: file.type || undefined,
+          });
+          if (uploadError) throw new Error(uploadError.message);
+
+          await saveFn({
+            data: {
+              attachable_type: form.attachable_type as "ticket" | "assignment" | "knowledge_base",
+              attachable_id: form.attachable_id,
+              file_type: form.file_type as "image" | "battery_file" | "document",
+              file_path: generatedPath,
+              original_name: file.name,
+              file_size: file.size,
+              description: form.description || null,
+            },
+          });
+        }
+      } else {
+        await saveFn({
+          data: {
+            id: form.id || undefined,
+            attachable_type: form.attachable_type as "ticket" | "assignment" | "knowledge_base",
+            attachable_id: form.attachable_id,
+            file_type: form.file_type as "image" | "battery_file" | "document",
+            file_path: form.file_path,
+            original_name: form.original_name || null,
+            file_size: form.file_size ? Number(form.file_size) : null,
+            description: form.description || null,
+          },
+        });
+      }
       toast.success("تم حفظ بيانات المرفق");
       setOpen(false);
-      setSelectedFile(null);
+      setSelectedFiles([]);
       setForm({ id: "", attachable_type: "ticket", attachable_id: "", file_type: "document", file_path: "", original_name: "", file_size: "", description: "" });
       queryClient.invalidateQueries({ queryKey: ["attachments"] });
     } catch (error) {
@@ -146,8 +200,19 @@ function AttachmentsPage() {
             <div className="space-y-2"><Label>نوع الملف</Label><Select value={form.file_type} onValueChange={(v) => setForm((p) => ({ ...p, file_type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="document">مستند</SelectItem><SelectItem value="image">صورة</SelectItem><SelectItem value="battery_file">ملف بطارية</SelectItem></SelectContent></Select></div>
             <div className="space-y-2">
               <Label>رفع ملف</Label>
-              <Input type="file" onChange={onSelectFile} accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.bin" />
-              <p className="text-xs text-muted-foreground">الحد الأقصى 20MB. يمكنك أيضًا إدخال مسار ملف موجود مسبقًا.</p>
+              <Input
+                type="file"
+                onChange={onSelectFile}
+                multiple={form.file_type === "image"}
+                accept={
+                  form.file_type === "image"
+                    ? ".jpg,.jpeg,.png,.webp"
+                    : form.file_type === "battery_file"
+                      ? ".log,.csv,.txt"
+                      : ".pdf,.csv,.xlsx,.xls,.txt"
+                }
+              />
+              <p className="text-xs text-muted-foreground">الصور حتى 5MB لكل ملف، وباقي الملفات حتى 20MB. الرفع المتعدد متاح للصور فقط.</p>
             </div>
             <div className="space-y-2"><Label>المسار داخل التخزين</Label><Input value={form.file_path} onChange={(e) => setForm((p) => ({ ...p, file_path: e.target.value }))} placeholder="assignment/<id>/file.pdf" /></div>
             <div className="space-y-2"><Label>الاسم الأصلي</Label><Input value={form.original_name} onChange={(e) => setForm((p) => ({ ...p, original_name: e.target.value }))} /></div>
