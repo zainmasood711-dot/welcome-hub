@@ -452,11 +452,12 @@ export const saveTicket = createServerFn({ method: "POST" })
         (rating === "success" || rating === "failure");
 
       if (shouldApplyKnowledgeOutcome) {
+        const finalKnowledgeBaseId = knowledgeBaseId as string;
         const finalRating: "success" | "failure" = rating === "success" ? "success" : "failure";
         const { data: kbRow, error: kbReadError } = await supabase
           .from("knowledge_base")
           .select("id, success_count, fail_count")
-          .eq("id", knowledgeBaseId)
+          .eq("id", finalKnowledgeBaseId)
           .single();
         if (kbReadError) throw new Error(`تعذر تحديث إحصائيات المادة المعرفية: ${kbReadError.message}`);
 
@@ -477,7 +478,7 @@ export const saveTicket = createServerFn({ method: "POST" })
         const { data: currentProfile } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
         if (currentProfile?.engineer_id) {
           const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
-            knowledge_base_id: knowledgeBaseId,
+            knowledge_base_id: finalKnowledgeBaseId,
             ticket_id: data.id,
             engineer_id: currentProfile.engineer_id,
             rating: finalRating,
