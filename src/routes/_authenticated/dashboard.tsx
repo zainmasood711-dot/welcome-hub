@@ -346,8 +346,10 @@ function DashboardPage() {
               <CardTitle className="text-base">وصول سريع للمهام المسندة</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {(operations?.fieldSummary?.quick_actions ?? myAssignments.slice(0, 6)).map((assignment) => (
-                <div key={assignment.assignment_id ?? assignment.id} className="flex items-center justify-between rounded border p-3 text-sm">
+              {(operations?.fieldSummary?.quick_actions ?? myAssignments.slice(0, 6)).map((assignment) => {
+                const assignmentId = "assignment_id" in assignment ? assignment.assignment_id : assignment.id;
+                return (
+                <div key={assignmentId} className="flex items-center justify-between rounded border p-3 text-sm">
                   <div>
                     <p className="font-medium">{assignment.assignment_type === "repair_visit" ? "زيارة إصلاح" : "تركيب جديد"}</p>
                     <p className="text-muted-foreground">{assignment.scheduled_date ? `موعد: ${new Date(assignment.scheduled_date).toLocaleDateString("ar-EG")}` : "بدون موعد"}</p>
@@ -356,7 +358,7 @@ function DashboardPage() {
                     {assignmentStatusBadge(assignment.status)}
                     <Link
                       to="/field-task/$assignmentId"
-                      params={{ assignmentId: assignment.assignment_id ?? assignment.id }}
+                      params={{ assignmentId }}
                       className="inline-flex items-center gap-1 text-xs text-primary"
                     >
                       فتح
@@ -364,7 +366,8 @@ function DashboardPage() {
                     </Link>
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {myAssignments.length === 0 && <p className="text-sm text-muted-foreground">لا توجد مهام مسندة حاليًا.</p>}
             </CardContent>
           </Card>
