@@ -55,6 +55,10 @@ const customerSystemWithAssetsSchema = z.object({
   assets: z.array(customerSystemAssetDraftSchema).max(100).default([]),
 });
 
+const customerDetailsInputSchema = z.object({
+  customer_id: z.string().uuid(),
+});
+
 const ticketSchema = z.object({
   id: z.string().uuid().optional(),
   customer_id: z.string().uuid(),
@@ -352,6 +356,50 @@ export const listCustomers = createServerFn({ method: "GET" })
     const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: false });
     if (error) throw new Error(`تعذر تحميل العملاء: ${error.message}`);
     return data ?? [];
+  });
+
+export const getCustomerDetailsBundle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => customerDetailsInputSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+
+    const { data: customer, error: customerError } = await supabase.from("customers").select("*").eq("id", data.customer_id).maybeSingle();
+    if (customerError) throw new Error(`تعذر تحميل بيانات العميل: ${customerError.message}`);
+    if (!customer) throw new Error("العميل غير موجود");
+
+    const { data: systems, error: systemsError } = await supabase
+      .from("customer_systems")
+      .select("*")
+      .eq("customer_id", data.customer_id)
+      .order("created_at", { ascending: false });
+    if (systemsError) throw new Error(`تعذر تحميل أنظمة العميل: ${systemsError.message}`);
+
+    const { data: tickets, error: ticketsError } = await supabase
+      .from("tickets")
+      .select("*")
+      .eq("customer_id", data.customer_id)
+      .order("created_at", { ascending: false });
+    if (ticketsError) throw new Error(`تعذر تحميل تذاكر العميل: ${ticketsError.message}`);
+
+    const ticketIds = (tickets ?? []).map((ticket) => ticket.id);
+    const { data: attachments, error: attachmentsError } = ticketIds.length
+      ? await supabase
+          .from("attachments")
+          .select("*")
+          .eq("attachable_type", "ticket")
+          .in("attachable_id", ticketIds)
+          .order("created_at", { ascending: false })
+      : { data: [], error: null };
+
+    if (attachmentsError) throw new Error(`تعذر تحميل مرفقات العميل: ${attachmentsError.message}`);
+
+    return {
+      customer,
+      systems: systems ?? [],
+      tickets: tickets ?? [],
+      attachments: attachments ?? [],
+    };
   });
 
 export const saveCustomer = createServerFn({ method: "POST" })
