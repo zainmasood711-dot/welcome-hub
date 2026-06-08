@@ -64,6 +64,8 @@ function TicketsPage() {
     id: "",
     customer_id: "",
     customer_system_id: "",
+    category_id: "",
+    error_code_id: "",
     ticket_type: "fault",
     status: "new",
     priority: "medium",
@@ -140,6 +142,8 @@ function TicketsPage() {
           id: form.id || undefined,
           customer_id: form.customer_id,
           customer_system_id: form.customer_system_id || null,
+          category_id: form.category_id || null,
+          error_code_id: form.error_code_id || null,
           ticket_type: form.ticket_type as "fault" | "inquiry" | "preventive_maintenance" | "new_installation",
           status: form.status as "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed",
           priority: form.priority as "low" | "medium" | "high" | "critical",
@@ -157,7 +161,7 @@ function TicketsPage() {
       });
       toast.success("تم حفظ التذكرة");
       setOpen(false);
-      setForm({ id: "", customer_id: "", customer_system_id: "", ticket_type: "fault", status: "new", priority: "medium", description: "", affected_product_id: "", error_code_text: "", solution_type: "", remote_solution_notes: "", knowledge_base_id: "" });
+      setForm({ id: "", customer_id: "", customer_system_id: "", category_id: "", error_code_id: "", ticket_type: "fault", status: "new", priority: "medium", description: "", affected_product_id: "", error_code_text: "", solution_type: "", remote_solution_notes: "", knowledge_base_id: "" });
       setCloseFeedback({ rating: "success", notes: "" });
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
@@ -278,7 +282,7 @@ function TicketsPage() {
                   <TableCell>{refs?.customers.find((c) => c.id === t.customer_id)?.name ?? "—"}</TableCell>
                   <TableCell>{t.ticket_type}</TableCell><TableCell>{statusBadge(t.status)}</TableCell><TableCell>{t.priority}</TableCell>
                   <TableCell className="max-w-[420px] truncate">{t.description}</TableCell>
-                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
+                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", category_id: t.category_id ?? "", error_code_id: t.error_code_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
