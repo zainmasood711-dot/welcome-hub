@@ -2050,9 +2050,14 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const roles = await getUserRoles(supabase, userId);
     const source = roles.includes("manager") ? (await import("@/integrations/supabase/client.server")).supabaseAdmin : supabase;
 
+    const { data: profileRow } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
+    const currentEngineerId = profileRow?.engineer_id ?? null;
+
     const [ticketsRes, assignmentsRes, engineersRes, productsRes, kbRes] = await Promise.all([
-      source.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
-      source.from("assignments").select("id, engineer_id, status, assignment_type, created_at, scheduled_date"),
+      source
+        .from("tickets")
+        .select("id, customer_id, status, ticket_type, priority, error_code_text, created_at, resolved_at, affected_product_id"),
+      source.from("assignments").select("id, engineer_id, status, assignment_type, created_at, scheduled_date, submitted_at"),
       source.from("engineers").select("id, name"),
       source.from("products").select("id, model"),
       source.from("knowledge_base").select("id, title, effectiveness_rate, success_count, fail_count"),
@@ -2066,6 +2071,13 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const engineers = engineersRes.data ?? [];
     const products = productsRes.data ?? [];
     const knowledge = kbRes.data ?? [];
+
+    const customerIds = Array.from(new Set(tickets.map((item) => item.customer_id).filter(Boolean)));
+    const customersRes = customerIds.length
+      ? await source.from("customers").select("id, name").in("id", customerIds)
+      : { data: [], error: null };
+    if (customersRes.error) throw new Error(`تعذر تحميل أسماء العملاء: ${customersRes.error.message}`);
+    const customerMap = new Map((customersRes.data ?? []).map((row) => [row.id, row.name]));
 
     const ticketSummary = {
       open: tickets.filter((t) => t.status === "new").length,
@@ -2093,6 +2105,10 @@ export const getOperationsReport = createServerFn({ method: "GET" })
 
     const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
     const delayed = assignmentSummary.overdue;
+
+    const availableEngineers = engineers.filter((engineer) =>
+      assignments.every((assignment) => assignment.engineer_id !== engineer.id || assignment.status === "completed" || assignment.status === "cancelled"),
+    );
 
     const recurringMap = new Map<string, number>();
     for (const t of tickets) {
@@ -2145,6 +2161,54 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       .sort((a, b) => b.totalIssues - a.totalIssues)
       .slice(0, 10);
 
+    const latestTickets = [...tickets]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 8)
+      .map((ticket) => ({
+        id: ticket.id,
+        customer_name: customerMap.get(ticket.customer_id) ?? "عميل غير معروف",
+        ticket_type: ticket.ticket_type,
+        status: ticket.status,
+        priority: ticket.priority,
+        error_code_text: ticket.error_code_text,
+        created_at: ticket.created_at,
+      }));
+
+    const resolutionDurationsHours = tickets
+      .filter((ticket) => (ticket.status === "closed" || ticket.status === "resolved_remote") && ticket.resolved_at)
+      .map((ticket) => (new Date(ticket.resolved_at as string).getTime() - new Date(ticket.created_at).getTime()) / (1000 * 60 * 60))
+      .filter((hours) => Number.isFinite(hours) && hours >= 0);
+
+    const averageResolutionHours =
+      resolutionDurationsHours.length > 0
+        ? Number((resolutionDurationsHours.reduce((sum, value) => sum + value, 0) / resolutionDurationsHours.length).toFixed(2))
+        : 0;
+
+    const fieldAssignments = currentEngineerId
+      ? assignments.filter((assignment) => assignment.engineer_id === currentEngineerId)
+      : [];
+    const fieldSummary = {
+      assigned_tasks: fieldAssignments.filter((assignment) => assignment.status === "pending" || assignment.status === "in_progress").length,
+      pending_reports: fieldAssignments.filter((assignment) => assignment.status === "in_progress" && !assignment.submitted_at).length,
+      overdue_tasks: fieldAssignments.filter(isOverdue).length,
+      quick_actions: fieldAssignments
+        .filter((assignment) => assignment.status === "pending" || assignment.status === "in_progress")
+        .sort((a, b) => {
+          const aTime = a.scheduled_date ? new Date(a.scheduled_date).getTime() : new Date(a.created_at).getTime();
+          const bTime = b.scheduled_date ? new Date(b.scheduled_date).getTime() : new Date(b.created_at).getTime();
+          return aTime - bTime;
+        })
+        .slice(0, 4)
+        .map((assignment) => ({
+          assignment_id: assignment.id,
+          assignment_type: assignment.assignment_type,
+          status: assignment.status,
+          scheduled_date: assignment.scheduled_date,
+        })),
+    };
+
+    const topProblematicModels = productReliability.slice(0, 8);
+
     const knowledgeBaseUsage = {
       mostUsedArticles: [...knowledge]
         .map((article) => ({
@@ -2169,16 +2233,24 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     return {
       unresolved,
       delayed,
+      averageResolutionHours,
       totalTickets: tickets.length,
       totalAssignments: assignments.length,
       ticketSummary,
       assignmentSummary,
+      latestTickets,
+      availableEngineers: {
+        count: availableEngineers.length,
+        names: availableEngineers.slice(0, 8).map((item) => item.name),
+      },
       recurringProblems,
       commonErrorCodes: recurringProblems,
       engineerPerformance,
       monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
       productReliability,
       problematicProducts: productReliability,
+      topProblematicModels,
+      fieldSummary,
       knowledgeBaseUsage,
     };
   });
