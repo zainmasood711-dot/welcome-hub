@@ -24,7 +24,9 @@ import { Route as AuthenticatedCustomerSystemsRouteImport } from './routes/_auth
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
 import { Route as AuthenticatedAttachmentsRouteImport } from './routes/_authenticated/attachments'
 import { Route as AuthenticatedAssignmentsRouteImport } from './routes/_authenticated/assignments'
+import { Route as AuthenticatedFieldTaskAssignmentIdRouteImport } from './routes/_authenticated/field-task.$assignmentId'
 import { Route as AuthenticatedCustomersCustomerIdRouteImport } from './routes/_authenticated/customers.$customerId'
+import { Route as AuthenticatedAssignmentsAssignmentIdRouteImport } from './routes/_authenticated/assignments.$assignmentId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -105,17 +107,29 @@ const AuthenticatedAssignmentsRoute =
     path: '/assignments',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedFieldTaskAssignmentIdRoute =
+  AuthenticatedFieldTaskAssignmentIdRouteImport.update({
+    id: '/field-task/$assignmentId',
+    path: '/field-task/$assignmentId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCustomersCustomerIdRoute =
   AuthenticatedCustomersCustomerIdRouteImport.update({
     id: '/$customerId',
     path: '/$customerId',
     getParentRoute: () => AuthenticatedCustomersRoute,
   } as any)
+const AuthenticatedAssignmentsAssignmentIdRoute =
+  AuthenticatedAssignmentsAssignmentIdRouteImport.update({
+    id: '/$assignmentId',
+    path: '/$assignmentId',
+    getParentRoute: () => AuthenticatedAssignmentsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/assignments': typeof AuthenticatedAssignmentsRoute
+  '/assignments': typeof AuthenticatedAssignmentsRouteWithChildren
   '/attachments': typeof AuthenticatedAttachmentsRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
@@ -127,12 +141,14 @@ export interface FileRoutesByFullPath {
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
+  '/assignments/$assignmentId': typeof AuthenticatedAssignmentsAssignmentIdRoute
   '/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/field-task/$assignmentId': typeof AuthenticatedFieldTaskAssignmentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
-  '/assignments': typeof AuthenticatedAssignmentsRoute
+  '/assignments': typeof AuthenticatedAssignmentsRouteWithChildren
   '/attachments': typeof AuthenticatedAttachmentsRoute
   '/catalog': typeof AuthenticatedCatalogRoute
   '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
@@ -144,14 +160,16 @@ export interface FileRoutesByTo {
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
+  '/assignments/$assignmentId': typeof AuthenticatedAssignmentsAssignmentIdRoute
   '/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/field-task/$assignmentId': typeof AuthenticatedFieldTaskAssignmentIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
-  '/_authenticated/assignments': typeof AuthenticatedAssignmentsRoute
+  '/_authenticated/assignments': typeof AuthenticatedAssignmentsRouteWithChildren
   '/_authenticated/attachments': typeof AuthenticatedAttachmentsRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
   '/_authenticated/customer-systems': typeof AuthenticatedCustomerSystemsRoute
@@ -163,7 +181,9 @@ export interface FileRoutesById {
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
+  '/_authenticated/assignments/$assignmentId': typeof AuthenticatedAssignmentsAssignmentIdRoute
   '/_authenticated/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/_authenticated/field-task/$assignmentId': typeof AuthenticatedFieldTaskAssignmentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -182,7 +202,9 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/reports'
     | '/tickets'
+    | '/assignments/$assignmentId'
     | '/customers/$customerId'
+    | '/field-task/$assignmentId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -199,7 +221,9 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/reports'
     | '/tickets'
+    | '/assignments/$assignmentId'
     | '/customers/$customerId'
+    | '/field-task/$assignmentId'
   id:
     | '__root__'
     | '/'
@@ -217,7 +241,9 @@ export interface FileRouteTypes {
     | '/_authenticated/notifications'
     | '/_authenticated/reports'
     | '/_authenticated/tickets'
+    | '/_authenticated/assignments/$assignmentId'
     | '/_authenticated/customers/$customerId'
+    | '/_authenticated/field-task/$assignmentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -333,6 +359,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssignmentsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/field-task/$assignmentId': {
+      id: '/_authenticated/field-task/$assignmentId'
+      path: '/field-task/$assignmentId'
+      fullPath: '/field-task/$assignmentId'
+      preLoaderRoute: typeof AuthenticatedFieldTaskAssignmentIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/customers/$customerId': {
       id: '/_authenticated/customers/$customerId'
       path: '/$customerId'
@@ -340,8 +373,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCustomersCustomerIdRouteImport
       parentRoute: typeof AuthenticatedCustomersRoute
     }
+    '/_authenticated/assignments/$assignmentId': {
+      id: '/_authenticated/assignments/$assignmentId'
+      path: '/$assignmentId'
+      fullPath: '/assignments/$assignmentId'
+      preLoaderRoute: typeof AuthenticatedAssignmentsAssignmentIdRouteImport
+      parentRoute: typeof AuthenticatedAssignmentsRoute
+    }
   }
 }
+
+interface AuthenticatedAssignmentsRouteChildren {
+  AuthenticatedAssignmentsAssignmentIdRoute: typeof AuthenticatedAssignmentsAssignmentIdRoute
+}
+
+const AuthenticatedAssignmentsRouteChildren: AuthenticatedAssignmentsRouteChildren =
+  {
+    AuthenticatedAssignmentsAssignmentIdRoute:
+      AuthenticatedAssignmentsAssignmentIdRoute,
+  }
+
+const AuthenticatedAssignmentsRouteWithChildren =
+  AuthenticatedAssignmentsRoute._addFileChildren(
+    AuthenticatedAssignmentsRouteChildren,
+  )
 
 interface AuthenticatedCustomersRouteChildren {
   AuthenticatedCustomersCustomerIdRoute: typeof AuthenticatedCustomersCustomerIdRoute
@@ -359,7 +414,7 @@ const AuthenticatedCustomersRouteWithChildren =
   )
 
 interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAssignmentsRoute: typeof AuthenticatedAssignmentsRoute
+  AuthenticatedAssignmentsRoute: typeof AuthenticatedAssignmentsRouteWithChildren
   AuthenticatedAttachmentsRoute: typeof AuthenticatedAttachmentsRoute
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
   AuthenticatedCustomerSystemsRoute: typeof AuthenticatedCustomerSystemsRoute
@@ -371,10 +426,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
+  AuthenticatedFieldTaskAssignmentIdRoute: typeof AuthenticatedFieldTaskAssignmentIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
-  AuthenticatedAssignmentsRoute: AuthenticatedAssignmentsRoute,
+  AuthenticatedAssignmentsRoute: AuthenticatedAssignmentsRouteWithChildren,
   AuthenticatedAttachmentsRoute: AuthenticatedAttachmentsRoute,
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
   AuthenticatedCustomerSystemsRoute: AuthenticatedCustomerSystemsRoute,
@@ -386,6 +442,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
+  AuthenticatedFieldTaskAssignmentIdRoute:
+    AuthenticatedFieldTaskAssignmentIdRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

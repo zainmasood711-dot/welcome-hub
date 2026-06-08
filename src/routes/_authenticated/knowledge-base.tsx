@@ -42,7 +42,7 @@ function KnowledgeBasePage() {
   const { data: refs } = useQuery({ queryKey: ["phase2-refs"], queryFn: () => refsFn() });
   const { data: articles = [] } = useQuery({ queryKey: ["knowledge-base"], queryFn: () => listFn() });
   const { data: feedback = [] } = useQuery({ queryKey: ["knowledge-feedback"], queryFn: () => listFeedbackFn() });
-  const { data: tickets = [] } = useQuery({ queryKey: ["knowledge-tickets"], queryFn: () => ticketsFn() });
+  const { data: tickets = [] } = useQuery({ queryKey: ["knowledge-tickets"], queryFn: () => ticketsFn({ data: {} }) });
   const { data: attachments = [] } = useQuery({ queryKey: ["knowledge-attachments"], queryFn: () => attachmentsFn() });
 
   const [open, setOpen] = useState(false);

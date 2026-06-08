@@ -51,7 +51,7 @@ function DashboardPage() {
 
   const { data: tickets = [] } = useQuery({
     queryKey: ["dashboard-ticket-list"],
-    queryFn: () => listTicketsFn(),
+    queryFn: () => listTicketsFn({ data: {} }),
     enabled: primaryRole === "support_engineer",
   });
 
