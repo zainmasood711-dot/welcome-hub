@@ -381,7 +381,9 @@ export const saveTicket = createServerFn({ method: "POST" })
       return { ok: true };
     }
 
-    const { error } = await supabase.from("tickets").insert({
+    const { data: created, error } = await supabase
+      .from("tickets")
+      .insert({
       customer_id: data.customer_id,
       customer_system_id: data.customer_system_id ?? null,
       ticket_type: data.ticket_type,
@@ -396,9 +398,11 @@ export const saveTicket = createServerFn({ method: "POST" })
       created_by: userId,
       resolved_by: data.resolved_by ?? null,
       resolved_at: data.resolved_at ?? null,
-    });
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(`تعذر إنشاء التذكرة: ${error.message}`);
-    return { ok: true };
+    return { ok: true, id: created.id };
   });
 
 export const listAssignments = createServerFn({ method: "GET" })
@@ -587,6 +591,29 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
       notes: data.notes ?? null,
     });
     if (error) throw new Error(`تعذر حفظ تقييم المعرفة: ${error.message}`);
+
+    const { data: feedbackRows, error: feedbackError } = await supabase
+      .from("knowledge_feedback")
+      .select("rating")
+      .eq("knowledge_base_id", data.knowledge_base_id);
+    if (feedbackError) throw new Error(`تعذر تحديث إحصائيات تقييم المعرفة: ${feedbackError.message}`);
+
+    const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
+    const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
+    const partialCount = (feedbackRows ?? []).filter((row) => row.rating === "partial").length;
+    const total = successCount + failCount + partialCount;
+    const effectivenessRate = total === 0 ? 0 : Number((((successCount + partialCount * 0.5) / total) * 100).toFixed(2));
+
+    const { error: updateError } = await supabase
+      .from("knowledge_base")
+      .update({
+        success_count: successCount,
+        fail_count: failCount,
+        effectiveness_rate: effectivenessRate,
+      })
+      .eq("id", data.knowledge_base_id);
+    if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
+
     return { ok: true };
   });
 
