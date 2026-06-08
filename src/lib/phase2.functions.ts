@@ -1253,7 +1253,53 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
     await assertSupportRole(supabase, userId);
 
     if (data.source_type === "ticket") {
-      return createKnowledgeArticleFromTicket({ data: { ticket_id: data.source_id, title: data.title ?? null } });
+      const { data: ticket, error: ticketError } = await supabase
+        .from("tickets")
+        .select("id, description, affected_product_id, error_code_text, remote_solution_notes")
+        .eq("id", data.source_id)
+        .single();
+      if (ticketError) throw new Error(`تعذر تحميل التذكرة: ${ticketError.message}`);
+
+      const solutionNotes = ticket.remote_solution_notes?.trim() ?? "";
+      if (solutionNotes.length < 10) {
+        throw new Error("أضف ملاحظات حل واضحة في التذكرة قبل تحويلها لمادة معرفية");
+      }
+
+      const generatedKeywords = await generateKnowledgeKeywords(supabase, {
+        productId: ticket.affected_product_id,
+        errorCode: ticket.error_code_text,
+        issueDescription: ticket.description,
+        providedKeywords: null,
+      });
+
+      const title =
+        data.title?.trim() ||
+        `حل ${ticket.error_code_text?.trim() || "عطل متكرر"}${ticket.affected_product_id ? " للمنتج المحدد" : ""}`;
+
+      const { data: createdArticle, error: createError } = await supabase
+        .from("knowledge_base")
+        .insert({
+          title,
+          issue_description: ticket.description,
+          solution_steps: solutionNotes,
+          product_id: ticket.affected_product_id ?? null,
+          error_code_text: ticket.error_code_text ?? null,
+          search_keywords: generatedKeywords || null,
+          source: "auto_from_ticket",
+          linked_ticket_ids: [ticket.id],
+          success_count: 0,
+          fail_count: 0,
+          effectiveness_rate: 0,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (createError) throw new Error(`تعذر إنشاء المادة المعرفية من التذكرة: ${createError.message}`);
+
+      const { error: linkError } = await supabase.from("tickets").update({ knowledge_base_id: createdArticle.id }).eq("id", ticket.id);
+      if (linkError) throw new Error(`تم إنشاء المادة لكن تعذر ربطها بالتذكرة: ${linkError.message}`);
+
+      return { created: true, articleId: createdArticle.id };
     }
 
     const { data: assignment, error: assignmentError } = await supabase
