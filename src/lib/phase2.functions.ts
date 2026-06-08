@@ -282,7 +282,7 @@ export const getPhase2References = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase } = context;
-    const [customers, systems, products, engineers, kb, tickets, assignments] = await Promise.all([
+    const [customers, systems, products, engineers, kb, tickets, assignments, productCategories, errorCodes] = await Promise.all([
       supabase.from("customers").select("id, name, phone").order("created_at", { ascending: false }),
       supabase.from("customer_systems").select("id, customer_id, system_name, status").order("created_at", { ascending: false }),
       supabase.from("products").select("id, model").eq("is_active", true).order("model"),
@@ -290,9 +290,24 @@ export const getPhase2References = createServerFn({ method: "GET" })
       supabase.from("knowledge_base").select("id, title, error_code_text").order("created_at", { ascending: false }),
       supabase.from("tickets").select("id, customer_id, status").order("created_at", { ascending: false }),
       supabase.from("assignments").select("id, ticket_id, status, engineer_id").order("created_at", { ascending: false }),
+      supabase.from("product_categories").select("id, name_ar, slug").order("name_ar"),
+      supabase
+        .from("error_codes")
+        .select("id, code, category, product_id, description")
+        .order("code"),
     ]);
 
-    const errors = [customers.error, systems.error, products.error, engineers.error, kb.error, tickets.error, assignments.error].filter(Boolean);
+    const errors = [
+      customers.error,
+      systems.error,
+      products.error,
+      engineers.error,
+      kb.error,
+      tickets.error,
+      assignments.error,
+      productCategories.error,
+      errorCodes.error,
+    ].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل بيانات الربط");
 
     return {
@@ -303,6 +318,8 @@ export const getPhase2References = createServerFn({ method: "GET" })
       knowledge: kb.data ?? [],
       tickets: tickets.data ?? [],
       assignments: assignments.data ?? [],
+      productCategories: productCategories.data ?? [],
+      errorCodes: errorCodes.data ?? [],
     };
   });
 
