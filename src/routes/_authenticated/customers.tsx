@@ -10,11 +10,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
 import { formatDate } from "@/lib/format";
-import { listCustomers, saveCustomer } from "@/lib/phase2.functions";
+import { listAttachments, listCustomerSystems, listCustomers, listTickets, saveCustomer } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/customers")({
@@ -28,6 +29,9 @@ function CustomersPage() {
   const queryClient = useQueryClient();
   const listFn = useServerFn(listCustomers);
   const saveFn = useServerFn(saveCustomer);
+  const systemsFn = useServerFn(listCustomerSystems);
+  const ticketsFn = useServerFn(listTickets);
+  const attachmentsFn = useServerFn(listAttachments);
 
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
@@ -37,8 +41,12 @@ function CustomersPage() {
     queryKey: ["customers"],
     queryFn: () => listFn(),
   });
+  const { data: systems = [] } = useQuery({ queryKey: ["customers-systems"], queryFn: () => systemsFn() });
+  const { data: tickets = [] } = useQuery({ queryKey: ["customers-tickets"], queryFn: () => ticketsFn() });
+  const { data: attachments = [] } = useQuery({ queryKey: ["customers-attachments"], queryFn: () => attachmentsFn() });
 
   const [search, setSearch] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     id: "",
@@ -55,6 +63,13 @@ function CustomersPage() {
     const q = search.toLowerCase();
     return customers.filter((c) => `${c.name} ${c.phone} ${c.governorate ?? ""} ${c.city ?? ""}`.toLowerCase().includes(q));
   }, [customers, search]);
+
+  const selectedCustomer = customers.find((item) => item.id === selectedCustomerId) ?? filtered[0] ?? null;
+  const customerSystems = systems.filter((item) => item.customer_id === selectedCustomer?.id);
+  const customerSystemIds = new Set(customerSystems.map((item) => item.id));
+  const customerTickets = tickets.filter((item) => item.customer_id === selectedCustomer?.id || (item.customer_system_id && customerSystemIds.has(item.customer_system_id)));
+  const customerTicketIds = new Set(customerTickets.map((item) => item.id));
+  const customerAttachments = attachments.filter((item) => (item.attachable_type === "ticket" && customerTicketIds.has(item.attachable_id)));
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -111,7 +126,7 @@ function CustomersPage() {
                 </TableRow>
               ) : (
                 filtered.map((item) => (
-                  <TableRow key={item.id}>
+                  <TableRow key={item.id} onClick={() => setSelectedCustomerId(item.id)} className="cursor-pointer">
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.phone}</TableCell>
                     <TableCell>{[item.governorate, item.city].filter(Boolean).join(" - ") || "—"}</TableCell>
@@ -146,6 +161,44 @@ function CustomersPage() {
             </TableBody>
           </Table>
         </div>
+
+        {selectedCustomer && (
+          <div className="rounded-lg border bg-card p-4">
+            <h3 className="mb-3 text-sm font-semibold">ملف العميل: {selectedCustomer.name}</h3>
+            <Tabs defaultValue="basic">
+              <TabsList>
+                <TabsTrigger value="basic">البيانات الأساسية</TabsTrigger>
+                <TabsTrigger value="systems">الأنظمة</TabsTrigger>
+                <TabsTrigger value="tickets">سجل التذاكر</TabsTrigger>
+                <TabsTrigger value="attachments">المرفقات</TabsTrigger>
+              </TabsList>
+              <TabsContent value="basic" className="mt-3 text-sm text-muted-foreground">
+                <p>الهاتف: {selectedCustomer.phone}</p>
+                <p>العنوان: {selectedCustomer.address ?? "—"}</p>
+                <p>الموقع: {[selectedCustomer.governorate, selectedCustomer.city].filter(Boolean).join(" - ") || "—"}</p>
+                <p>ملاحظات: {selectedCustomer.notes ?? "—"}</p>
+              </TabsContent>
+              <TabsContent value="systems" className="mt-3">
+                <div className="space-y-2 text-sm">
+                  {customerSystems.map((item) => <div key={item.id} className="rounded border p-2">{item.system_name} · {item.status}</div>)}
+                  {customerSystems.length === 0 && <p className="text-muted-foreground">لا توجد أنظمة مرتبطة.</p>}
+                </div>
+              </TabsContent>
+              <TabsContent value="tickets" className="mt-3">
+                <div className="space-y-2 text-sm">
+                  {customerTickets.map((item) => <div key={item.id} className="rounded border p-2">{item.id.slice(0, 8)} · {item.status} · {item.priority}</div>)}
+                  {customerTickets.length === 0 && <p className="text-muted-foreground">لا توجد تذاكر مرتبطة.</p>}
+                </div>
+              </TabsContent>
+              <TabsContent value="attachments" className="mt-3">
+                <div className="space-y-2 text-sm">
+                  {customerAttachments.map((item) => <div key={item.id} className="rounded border p-2">{item.original_name ?? item.file_path}</div>)}
+                  {customerAttachments.length === 0 && <p className="text-muted-foreground">لا توجد مرفقات مرتبطة.</p>}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
