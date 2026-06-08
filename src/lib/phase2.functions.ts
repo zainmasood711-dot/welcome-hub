@@ -80,6 +80,68 @@ const ticketSchema = z.object({
   resolved_at: z.string().optional().nullable(),
 });
 
+const ticketListFiltersSchema = z.object({
+  status: z.enum(["new", "in_progress", "resolved_remote", "assigned_field", "closed"]).optional().nullable(),
+  ticket_type: z.enum(["fault", "inquiry", "preventive_maintenance", "new_installation"]).optional().nullable(),
+  priority: z.enum(["low", "medium", "high", "critical"]).optional().nullable(),
+  engineer_needed: z.boolean().optional().nullable(),
+  from_date: z.string().optional().nullable(),
+  to_date: z.string().optional().nullable(),
+  search: z.string().trim().max(200).optional().nullable(),
+});
+
+const ticketCreateWorkflowSchema = z.object({
+  customer_id: z.string().uuid().optional().nullable(),
+  quick_customer: z
+    .object({
+      name: z.string().trim().min(2).max(160),
+      phone: z
+        .string()
+        .trim()
+        .min(8)
+        .max(25)
+        .regex(/^[0-9+\-()\s]+$/, "رقم الهاتف يجب أن يحتوي أرقامًا ورموز هاتف فقط"),
+      governorate: z.string().trim().max(80).optional().nullable(),
+      city: z.string().trim().max(80).optional().nullable(),
+      address: z.string().trim().max(300).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  customer_system_id: z.string().uuid().optional().nullable(),
+  ticket_type: z.enum(["fault", "inquiry", "preventive_maintenance", "new_installation"]),
+  priority: z.enum(["low", "medium", "high", "critical"]),
+  title: z.string().trim().min(3).max(180),
+  description: z.string().trim().min(8).max(2200),
+  affected_product_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+  attachment_files: z
+    .array(
+      z.object({
+        file_type: z.enum(["image", "battery_file", "document"]),
+        file_path: z.string().trim().min(3).max(500),
+        original_name: z.string().trim().max(255).optional().nullable(),
+        file_size: z.number().int().min(0).max(20_971_520).optional().nullable(),
+      }),
+    )
+    .max(10)
+    .default([]),
+  solution_type: z.enum(["remote", "field", "bring_to_center", "no_fix_needed"]).optional().nullable(),
+  remote_solution_notes: z.string().trim().max(4000).optional().nullable(),
+  knowledge_base_id: z.string().uuid().optional().nullable(),
+  create_knowledge_entry: z.boolean().default(false),
+  field_visit_needed: z.boolean().default(false),
+  assignment: z
+    .object({
+      engineer_id: z.string().uuid(),
+      assignment_type: z.enum(["repair_visit", "new_installation"]),
+      scheduled_date: z.string().optional().nullable(),
+      notes: z.string().trim().max(1000).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
 const assignmentSchema = z.object({
   id: z.string().uuid().optional(),
   ticket_id: z.string().uuid().optional().nullable(),
