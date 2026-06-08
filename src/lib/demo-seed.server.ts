@@ -323,7 +323,18 @@ export async function seedDemoData(currentUserId?: string) {
 
   const createdTicketIds: string[] = [];
   if ((existingDemoTickets.data ?? []).length === 0) {
-    const ticketPayload = [
+    const ticketPayload: Array<{
+      customer_id: string;
+      customer_system_id: string | null;
+      ticket_type: "fault" | "preventive_maintenance";
+      status: "assigned_field" | "in_progress";
+      priority: "high" | "medium";
+      description: string;
+      affected_product_id: string | null;
+      error_code_text: string;
+      knowledge_base_id: string | null;
+      created_by: string | null;
+    }> = [
       {
         customer_id: customerByPhone["201000000101"],
         customer_system_id: systemIds[0] ?? null,
