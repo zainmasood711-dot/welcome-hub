@@ -101,17 +101,6 @@ function DashboardPage() {
     { title: "زيارات إصلاح", value: myAssignments.filter((item) => item.assignment_type === "repair_visit").length, icon: Wrench },
   ];
 
-  const engineersState = [
-    { label: "متاح", value: data.engineersByAvailability.available },
-    { label: "مشغول", value: data.engineersByAvailability.busy },
-    { label: "غير نشط", value: data.engineersByAvailability.inactive },
-  ];
-
-  const codeCategories = [
-    { name: "تقني", value: data.errorCodeByCategory.technical },
-    { name: "برمجي", value: data.errorCodeByCategory.software },
-  ];
-
   return (
     <AppShell roles={roles} title="لوحة التحكم">
       <div className="space-y-4">
