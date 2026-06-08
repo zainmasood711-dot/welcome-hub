@@ -1773,13 +1773,34 @@ export const saveAttachmentMeta = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const listKnowledgeBase = createServerFn({ method: "GET" })
+export const listKnowledgeBase = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((input) => knowledgeListFiltersSchema.parse(input ?? {}))
+  .handler(async ({ context, data }) => {
     const { supabase } = context;
-    const { data, error } = await supabase.from("knowledge_base").select("*").order("created_at", { ascending: false });
+    let query = supabase.from("knowledge_base").select("*").limit(data.limit);
+
+    if (data.product_id) query = query.eq("product_id", data.product_id);
+    if (data.source) query = query.eq("source", data.source);
+    if (data.min_effectiveness != null) query = query.gte("effectiveness_rate", data.min_effectiveness);
+    if (data.search) {
+      const normalized = data.search.trim();
+      query = query.or(
+        `title.ilike.%${normalized}%,issue_description.ilike.%${normalized}%,solution_steps.ilike.%${normalized}%,error_code_text.ilike.%${normalized}%,search_keywords.ilike.%${normalized}%`,
+      );
+    }
+
+    if (data.sort_by === "effectiveness") {
+      query = query.order("effectiveness_rate", { ascending: false }).order("created_at", { ascending: false });
+    } else if (data.sort_by === "usage") {
+      query = query.order("success_count", { ascending: false }).order("created_at", { ascending: false });
+    } else {
+      query = query.order("created_at", { ascending: false });
+    }
+
+    const { data: rows, error } = await query;
     if (error) throw new Error(`تعذر تحميل قاعدة المعرفة: ${error.message}`);
-    return data ?? [];
+    return rows ?? [];
   });
 
 export const saveKnowledgeBase = createServerFn({ method: "POST" })
@@ -1860,27 +1881,52 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(`تعذر حفظ تقييم المعرفة: ${error.message}`);
 
-    const { data: feedbackRows, error: feedbackError } = await supabase
-      .from("knowledge_feedback")
-      .select("rating")
-      .eq("knowledge_base_id", data.knowledge_base_id);
-    if (feedbackError) throw new Error(`تعذر تحديث إحصائيات تقييم المعرفة: ${feedbackError.message}`);
-
-    const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
-    const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
-    const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
-
-    const { error: updateError } = await supabase
-      .from("knowledge_base")
-      .update({
-        success_count: successCount,
-        fail_count: failCount,
-        effectiveness_rate: effectivenessRate,
-      })
-      .eq("id", data.knowledge_base_id);
-    if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
+    await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
 
     return { ok: true };
+  });
+
+export const saveKnowledgeFeedbackFromContext = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => knowledgeFeedbackFromContextSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+
+    if (!data.ticket_id && !data.assignment_id) {
+      throw new Error("يجب ربط التقييم بتذكرة أو مهمة");
+    }
+
+    let ticketId: string | null = data.ticket_id ?? null;
+    if (data.assignment_id && !ticketId) {
+      const { data: assignment, error: assignmentError } = await supabase
+        .from("assignments")
+        .select("ticket_id")
+        .eq("id", data.assignment_id)
+        .maybeSingle();
+      if (assignmentError) throw new Error(`تعذر تحميل بيانات المهمة: ${assignmentError.message}`);
+      ticketId = assignment?.ticket_id ?? null;
+    }
+
+    const { data: profileRow, error: profileError } = await supabase
+      .from("profiles")
+      .select("engineer_id")
+      .eq("id", userId)
+      .maybeSingle();
+    if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
+    if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+
+    const { error: insertError } = await supabase.from("knowledge_feedback").insert({
+      knowledge_base_id: data.knowledge_base_id,
+      ticket_id: ticketId,
+      engineer_id: profileRow.engineer_id,
+      rating: data.rating,
+      notes: data.notes ?? null,
+    });
+    if (insertError) throw new Error(`تعذر حفظ تقييم المعرفة: ${insertError.message}`);
+
+    const metrics = await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+
+    return { ok: true, metrics };
   });
 
 export const listKnowledgeFeedback = createServerFn({ method: "GET" })
