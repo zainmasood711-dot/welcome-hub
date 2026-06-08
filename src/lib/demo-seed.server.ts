@@ -116,7 +116,9 @@ export async function seedDemoData(currentUserId?: string) {
       description: `${DEMO_TAG} بطارية ليثيوم`,
       is_active: true,
     },
-  ].filter((item) => Boolean(item.category_id && item.brand_id));
+  ].filter((item): item is { category_id: string; brand_id: string; model: string; description: string; is_active: boolean } =>
+    Boolean(item.category_id && item.brand_id),
+  );
 
   const { data: productRows, error: productsError } = await supabaseAdmin
     .from("products")
@@ -155,11 +157,17 @@ export async function seedDemoData(currentUserId?: string) {
   if (errorCodesError) throw new Error(`فشل تجهيز رموز الأعطال: ${errorCodesError.message}`);
   summary.errorCodes = errorCodeRows?.length ?? 0;
 
-  const engineers = [
+  const engineers: Array<{
+    name: string;
+    type: "internal" | "external";
+    availability_status: "available" | "busy" | "inactive";
+    governorate: string;
+    city: string;
+  }> = [
     { name: "م. أحمد فؤاد", type: "internal", availability_status: "available", governorate: "القاهرة", city: "مدينة نصر" },
     { name: "م. سارة محمود", type: "internal", availability_status: "busy", governorate: "الجيزة", city: "الدقي" },
     { name: "م. كريم علي", type: "external", availability_status: "available", governorate: "الإسكندرية", city: "سيدي جابر" },
-  ] as const;
+  ];
 
   const engineerIds: string[] = [];
   for (const engineer of engineers) {
@@ -337,6 +345,7 @@ export async function seedDemoData(currentUserId?: string) {
         description: `${DEMO_TAG} صيانة دورية ومراجعة البطاريات`,
         affected_product_id: productByModel.US5000 ?? null,
         error_code_text: "PM-01",
+        knowledge_base_id: null,
         created_by: currentUserId ?? null,
       },
     ].filter((item) => Boolean(item.customer_id));
