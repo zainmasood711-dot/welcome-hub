@@ -26,6 +26,8 @@ export type AppPermission =
   | "attachments.manage"
   | "knowledge_base.read"
   | "knowledge_base.manage"
+  | "notifications.read"
+  | "notifications.manage"
   | "engineers.read_assigned"
   | "engineers.read_all"
   | "engineers.manage"
@@ -65,6 +67,8 @@ export const rolePermissions: Record<AppRole, AppPermission[]> = {
     "attachments.manage",
     "knowledge_base.read",
     "knowledge_base.manage",
+    "notifications.read",
+    "notifications.manage",
     "engineers.read_all",
     "engineers.manage",
     "statuses.manage",
@@ -79,6 +83,7 @@ export const rolePermissions: Record<AppRole, AppPermission[]> = {
     "field_assignments.read_assigned",
     "install_assignments.read_assigned",
     "attachments.read_assigned",
+    "notifications.read",
     "engineers.read_assigned",
   ],
   manager: [
@@ -89,6 +94,7 @@ export const rolePermissions: Record<AppRole, AppPermission[]> = {
     "tickets.read_all",
     "field_assignments.read_all",
     "install_assignments.read_all",
+    "notifications.read",
     "engineers.read_all",
   ],
 };
