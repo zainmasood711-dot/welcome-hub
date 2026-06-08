@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import type { AppRole } from "@/lib/roles";
+import type { AppPermission, AppRole } from "@/lib/roles";
 import { hasAnyPermission, roleLabels } from "@/lib/roles";
 
 type AppShellProps = {
@@ -18,13 +18,7 @@ type NavItem = {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
-  permissions?: (
-    | "dashboard.read"
-    | "engineers.read_all"
-    | "engineers.read_assigned"
-    | "products.read"
-    | "error_codes.read"
-  )[];
+  permissions?: AppPermission[];
 };
 
 const navItems: NavItem[] = [
