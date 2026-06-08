@@ -69,7 +69,10 @@ function KnowledgeBasePage() {
   }, [articles, filterProductId, filterSource, filterEffectiveness, searchText]);
 
   const selectedArticle = articles.find((item) => item.id === selectedArticleId) ?? filteredArticles[0] ?? null;
-  const selectedTickets = tickets.filter((ticket) => selectedArticle?.linked_ticket_ids?.includes(ticket.id));
+  const linkedTicketIds = Array.isArray(selectedArticle?.linked_ticket_ids)
+    ? (selectedArticle?.linked_ticket_ids.filter((value): value is string => typeof value === "string") ?? [])
+    : [];
+  const selectedTickets = tickets.filter((ticket) => linkedTicketIds.includes(ticket.id));
   const selectedFeedback = feedback.filter((item) => item.knowledge_base_id === selectedArticle?.id);
   const selectedAttachments = attachments.filter((item) => item.attachable_type === "knowledge_base" && item.attachable_id === selectedArticle?.id);
 
