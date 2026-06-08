@@ -41,6 +41,8 @@ const ticketSchema = z.object({
   id: z.string().uuid().optional(),
   customer_id: z.string().uuid(),
   customer_system_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
   ticket_type: z.enum(["fault", "inquiry", "preventive_maintenance", "new_installation"]),
   status: z.enum(["new", "in_progress", "resolved_remote", "assigned_field", "closed"]),
   priority: z.enum(["low", "medium", "high", "critical"]),
@@ -492,6 +494,8 @@ export const saveTicket = createServerFn({ method: "POST" })
         .update({
           customer_id: data.customer_id,
           customer_system_id: data.customer_system_id ?? null,
+          category_id: data.category_id ?? null,
+          error_code_id: data.error_code_id ?? null,
           ticket_type: data.ticket_type,
           status: data.status,
           priority: data.priority,
@@ -560,6 +564,8 @@ export const saveTicket = createServerFn({ method: "POST" })
       .insert({
       customer_id: data.customer_id,
       customer_system_id: data.customer_system_id ?? null,
+      category_id: data.category_id ?? null,
+      error_code_id: data.error_code_id ?? null,
       ticket_type: data.ticket_type,
       status: data.status,
       priority: data.priority,
