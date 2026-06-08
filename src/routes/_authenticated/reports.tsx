@@ -22,7 +22,23 @@ function ReportsPage() {
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
 
-  const { data } = useQuery({ queryKey: ["operations-report"], queryFn: () => reportFn() });
+  const { data, isLoading, error } = useQuery({ queryKey: ["operations-report"], queryFn: () => reportFn() });
+
+  if (isLoading) {
+    return (
+      <AppShell roles={roles} title="التقارير التشغيلية">
+        <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">جاري تحميل بيانات التقارير...</div>
+      </AppShell>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <AppShell roles={roles} title="التقارير التشغيلية">
+        <div className="rounded-lg border border-destructive/40 bg-card p-6 text-sm text-destructive">تعذر تحميل بيانات التقارير.</div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell roles={roles} title="التقارير التشغيلية">
@@ -49,10 +65,10 @@ function ReportsPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">ملخص المهام</CardTitle></CardHeader>
             <CardContent className="grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded border p-2">Pending: <span className="font-semibold">{data?.assignmentSummary?.pending ?? 0}</span></div>
-              <div className="rounded border p-2">In progress: <span className="font-semibold">{data?.assignmentSummary?.in_progress ?? 0}</span></div>
-              <div className="rounded border p-2">Completed: <span className="font-semibold">{data?.assignmentSummary?.completed ?? 0}</span></div>
-              <div className="rounded border p-2">Overdue: <span className="font-semibold">{data?.assignmentSummary?.overdue ?? 0}</span></div>
+              <div className="rounded border p-2">قيد الانتظار: <span className="font-semibold">{data.assignmentSummary?.pending ?? 0}</span></div>
+              <div className="rounded border p-2">قيد التنفيذ: <span className="font-semibold">{data.assignmentSummary?.in_progress ?? 0}</span></div>
+              <div className="rounded border p-2">مكتملة: <span className="font-semibold">{data.assignmentSummary?.completed ?? 0}</span></div>
+              <div className="rounded border p-2">متأخرة: <span className="font-semibold">{data.assignmentSummary?.overdue ?? 0}</span></div>
             </CardContent>
           </Card>
         </section>
