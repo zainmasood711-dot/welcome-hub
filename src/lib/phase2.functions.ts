@@ -638,28 +638,12 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
       return { created: false, existingArticleId: exactMatch.id };
     }
 
-    const keywordSet = new Set<string>(extractImportantWords(ticket.description));
-    const normalizedError = normalizeText(ticket.error_code_text);
-    if (normalizedError) keywordSet.add(normalizedError);
-
-    if (ticket.affected_product_id) {
-      const { data: product } = await supabase
-        .from("products")
-        .select("id, model, brand_id")
-        .eq("id", ticket.affected_product_id)
-        .maybeSingle();
-
-      if (product?.model) {
-        extractImportantWords(product.model).forEach((word) => keywordSet.add(word));
-      }
-
-      if (product?.brand_id) {
-        const { data: brand } = await supabase.from("brands").select("name").eq("id", product.brand_id).maybeSingle();
-        if (brand?.name) {
-          extractImportantWords(brand.name).forEach((word) => keywordSet.add(word));
-        }
-      }
-    }
+    const generatedKeywords = await generateKnowledgeKeywords(supabase, {
+      productId: ticket.affected_product_id,
+      errorCode: ticket.error_code_text,
+      issueDescription: ticket.description,
+      providedKeywords: null,
+    });
 
     const title =
       data.title?.trim() ||
@@ -673,7 +657,7 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
         solution_steps: solutionNotes,
         product_id: ticket.affected_product_id ?? null,
         error_code_text: ticket.error_code_text ?? null,
-        search_keywords: Array.from(keywordSet).join(", "),
+        search_keywords: generatedKeywords || null,
         source: "auto_from_ticket",
         linked_ticket_ids: [ticket.id],
         success_count: 0,
