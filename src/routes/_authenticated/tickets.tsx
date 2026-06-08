@@ -83,6 +83,8 @@ function TicketsPage() {
       suggestKnowledgeFn({
         data: {
           affected_product_id: form.affected_product_id || null,
+          category_id: form.category_id || null,
+          error_code_id: form.error_code_id || null,
           error_code_text: form.error_code_text || null,
           issue_description: form.description || null,
           limit: 4,
@@ -427,6 +429,7 @@ function TicketsPage() {
                             <Badge variant="secondary">فاعلية {item.effectiveness_rate}%</Badge>
                             <Badge variant="outline">استخدام {item.success_count + item.fail_count}</Badge>
                           </div>
+                           <p className="mt-2 text-xs text-muted-foreground">سبب الاقتراح: {item.match_reason}</p>
                         </div>
                         <Button type="button" size="sm" onClick={() => applyKnowledgeSuggestion(item.id)}>
                           استخدم هذا الحل
