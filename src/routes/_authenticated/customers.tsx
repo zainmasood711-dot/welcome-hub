@@ -56,10 +56,10 @@ function CustomersPage() {
     notes: "",
   });
 
-  const governorates = useMemo(() => Array.from(new Set(customers.map((c) => c.governorate).filter(Boolean))).sort(), [customers]);
+  const governorates = useMemo(() => Array.from(new Set(customers.map((c) => c.governorate).filter((v): v is string => Boolean(v)))).sort(), [customers]);
   const cities = useMemo(() => {
     const scoped = governorateFilter === "all" ? customers : customers.filter((item) => item.governorate === governorateFilter);
-    return Array.from(new Set(scoped.map((c) => c.city).filter(Boolean))).sort();
+    return Array.from(new Set(scoped.map((c) => c.city).filter((v): v is string => Boolean(v)))).sort();
   }, [customers, governorateFilter]);
 
   const byCustomer = useMemo(() => {
