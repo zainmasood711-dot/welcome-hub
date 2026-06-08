@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { AlertTriangle, Boxes, Clock3, ListChecks, ShieldCheck, Ticket, Users, Wrench } from "lucide-react";
+import { AlertTriangle, Clock3, ListChecks, ShieldCheck, Ticket, Users, Wrench } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell } from "@/components/app/app-shell";
