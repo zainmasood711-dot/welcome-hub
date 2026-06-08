@@ -163,6 +163,48 @@ const assignmentFieldUpdateSchema = z.object({
   recommendations: z.string().trim().max(4000).optional().nullable(),
 });
 
+const assignmentDetailsSchema = z.object({
+  assignment_id: z.string().uuid(),
+});
+
+const assignmentCreateFromSourceSchema = z.object({
+  ticket_id: z.string().uuid().optional().nullable(),
+  customer_system_id: z.string().uuid().optional().nullable(),
+  engineer_id: z.string().uuid(),
+  assignment_type: z.enum(["repair_visit", "new_installation"]),
+  scheduled_date: z.string().optional().nullable(),
+  notes: z.string().trim().max(1200).optional().nullable(),
+});
+
+const assignmentFieldReportWorkflowSchema = z.object({
+  assignment_id: z.string().uuid(),
+  status: z.enum(["in_progress", "completed", "cancelled"]),
+  work_done: z.string().trim().max(4000).optional().nullable(),
+  difficulties: z.string().trim().max(4000).optional().nullable(),
+  recommendations: z.string().trim().max(4000).optional().nullable(),
+  knowledge_base_id: z.string().uuid().optional().nullable(),
+  knowledge_feedback_rating: z.enum(["success", "failure", "partial"]).optional().nullable(),
+  knowledge_feedback_notes: z.string().trim().max(1500).optional().nullable(),
+  photos: z
+    .array(
+      z.object({
+        file_path: z.string().trim().min(3).max(500),
+        original_name: z.string().trim().max(255).optional().nullable(),
+        file_size: z.number().int().min(0).max(20_971_520).optional().nullable(),
+      }),
+    )
+    .max(10)
+    .default([]),
+  battery_log_file: z
+    .object({
+      file_path: z.string().trim().min(3).max(500),
+      original_name: z.string().trim().max(255).optional().nullable(),
+      file_size: z.number().int().min(0).max(20_971_520).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
 const attachmentSchema = z.object({
   id: z.string().uuid().optional(),
   attachable_type: z.enum(["ticket", "assignment", "knowledge_base"]),
@@ -325,6 +367,32 @@ async function assertSupportRole(supabase: SupabaseClient<Database>, userId: str
   if (!roles.includes("support_engineer")) {
     throw new Error("ليس لديك صلاحية لتنفيذ هذا الإجراء");
   }
+}
+
+async function assertCanAccessAssignment(supabase: SupabaseClient<Database>, userId: string, assignmentId: string) {
+  const roles = await getUserRoles(supabase, userId);
+  const { data: assignment, error } = await supabase
+    .from("assignments")
+    .select("id, engineer_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+
+  if (error) throw new Error(`تعذر تحميل المهمة: ${error.message}`);
+  if (!assignment) throw new Error("المهمة غير موجودة");
+
+  if (roles.includes("support_engineer") || roles.includes("manager")) return assignment;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("engineer_id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profileError) throw new Error(`تعذر التحقق من هوية المهندس: ${profileError.message}`);
+  if (!profile?.engineer_id || profile.engineer_id !== assignment.engineer_id) {
+    throw new Error("ليست لديك صلاحية الوصول لهذه المهمة");
+  }
+
+  return assignment;
 }
 
 async function generateKnowledgeKeywords(
