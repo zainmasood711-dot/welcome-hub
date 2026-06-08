@@ -80,9 +80,14 @@ const attachmentSchema = z.object({
   attachable_type: z.enum(["ticket", "assignment", "knowledge_base"]),
   attachable_id: z.string().uuid(),
   file_type: z.enum(["image", "battery_file", "document"]),
-  file_path: z.string().trim().min(2).max(500),
+  file_path: z
+    .string()
+    .trim()
+    .min(3)
+    .max(500)
+    .regex(/^.+\.[a-zA-Z0-9]+$/, "file_path يجب أن يحتوي امتداد ملف صالح"),
   original_name: z.string().trim().max(255).optional().nullable(),
-  file_size: z.number().int().min(0).max(50_000_000).optional().nullable(),
+  file_size: z.number().int().min(0).max(20_971_520).optional().nullable(),
   description: z.string().trim().max(1000).optional().nullable(),
 });
 
@@ -122,6 +127,39 @@ const notificationSchema = z.object({
 const readNotificationSchema = z.object({
   notification_id: z.string().uuid(),
 });
+
+const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+const documentExtensions = new Set(["pdf", "doc", "docx", "xls", "xlsx", "csv", "txt"]);
+const batteryExtensions = new Set(["csv", "xlsx", "txt", "bin"]);
+
+function getFileExtension(path: string) {
+  const clean = path.trim().toLowerCase();
+  const ext = clean.split(".").pop() ?? "";
+  return ext;
+}
+
+function validateAttachmentInput(data: z.infer<typeof attachmentSchema>) {
+  const ext = getFileExtension(data.file_path);
+  if (!ext) {
+    throw new Error("امتداد الملف غير صالح");
+  }
+
+  if (data.file_type === "image" && !imageExtensions.has(ext)) {
+    throw new Error("نوع الملف لا يتوافق مع مرفق الصورة");
+  }
+
+  if (data.file_type === "document" && !documentExtensions.has(ext)) {
+    throw new Error("نوع الملف لا يتوافق مع مرفق المستند");
+  }
+
+  if (data.file_type === "battery_file" && !batteryExtensions.has(ext)) {
+    throw new Error("نوع الملف لا يتوافق مع مرفق البطارية");
+  }
+
+  if (data.file_size != null && data.file_size > 20_971_520) {
+    throw new Error("حجم الملف يتجاوز الحد المسموح 20MB");
+  }
+}
 
 async function getUserRoles(supabase: SupabaseClient<Database>, userId: string): Promise<AppRole[]> {
   const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", userId);
@@ -440,6 +478,7 @@ export const saveAttachmentMeta = createServerFn({ method: "POST" })
   .inputValidator((input) => attachmentSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
+    validateAttachmentInput(data);
 
     if (data.id) {
       const { error } = await supabase
@@ -602,7 +641,57 @@ export const markNotificationRead = createServerFn({ method: "POST" })
 export const getOperationsReport = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    const roles = await getUserRoles(supabase, userId);
+
+    if (roles.includes("manager")) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const [ticketsRes, assignmentsRes, engineersRes] = await Promise.all([
+        supabaseAdmin.from("tickets").select("id, status, priority, error_code_text, created_at"),
+        supabaseAdmin.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
+        supabaseAdmin.from("engineers").select("id, name"),
+      ]);
+
+      const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error].filter(Boolean);
+      if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
+
+      const tickets = ticketsRes.data ?? [];
+      const assignments = assignmentsRes.data ?? [];
+      const engineers = engineersRes.data ?? [];
+
+      const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
+      const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
+
+      const recurringMap = new Map<string, number>();
+      for (const t of tickets) {
+        if (!t.error_code_text) continue;
+        recurringMap.set(t.error_code_text, (recurringMap.get(t.error_code_text) ?? 0) + 1);
+      }
+      const recurringProblems = [...recurringMap.entries()]
+        .map(([code, count]) => ({ code, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+      const engineerPerformance = engineers.map((engineer) => {
+        const engineerAssignments = assignments.filter((a) => a.engineer_id === engineer.id);
+        return {
+          engineer_id: engineer.id,
+          engineer_name: engineer.name,
+          total: engineerAssignments.length,
+          completed: engineerAssignments.filter((a) => a.status === "completed").length,
+          in_progress: engineerAssignments.filter((a) => a.status === "in_progress").length,
+        };
+      });
+
+      return {
+        unresolved,
+        delayed,
+        totalTickets: tickets.length,
+        totalAssignments: assignments.length,
+        recurringProblems,
+        engineerPerformance,
+      };
+    }
 
     const [ticketsRes, assignmentsRes, engineersRes] = await Promise.all([
       supabase.from("tickets").select("id, status, priority, error_code_text, created_at"),

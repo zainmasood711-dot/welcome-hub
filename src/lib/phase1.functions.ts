@@ -132,6 +132,53 @@ export const getDashboardOverview = createServerFn({ method: "GET" })
     const { supabase, userId } = context;
     const roles = await getUserRoles(supabase, userId);
 
+    if (roles.includes("manager")) {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const [engineersRes, categoriesRes, brandsRes, productsRes, errorCodesRes] = await Promise.all([
+        supabaseAdmin.from("engineers").select("id, availability_status"),
+        supabaseAdmin.from("product_categories").select("id"),
+        supabaseAdmin.from("brands").select("id"),
+        supabaseAdmin.from("products").select("id, is_active"),
+        supabaseAdmin.from("error_codes").select("id, code, occurrences_count, category"),
+      ]);
+
+      const allErrors = [engineersRes, categoriesRes, brandsRes, productsRes, errorCodesRes]
+        .map((res) => res.error)
+        .filter(Boolean);
+      if (allErrors.length > 0) {
+        throw new Error(allErrors[0]?.message ?? "تعذر تحميل بيانات لوحة التحكم");
+      }
+
+      const engineers = engineersRes.data ?? [];
+      const products = productsRes.data ?? [];
+      const codes = errorCodesRes.data ?? [];
+
+      return {
+        roles,
+        summary: {
+          engineers: engineers.length,
+          categories: (categoriesRes.data ?? []).length,
+          brands: (brandsRes.data ?? []).length,
+          products: products.length,
+          activeProducts: products.filter((item) => item.is_active).length,
+          errorCodes: codes.length,
+        },
+        engineersByAvailability: {
+          available: engineers.filter((item) => item.availability_status === "available").length,
+          busy: engineers.filter((item) => item.availability_status === "busy").length,
+          inactive: engineers.filter((item) => item.availability_status === "inactive").length,
+        },
+        topErrorCodes: [...codes]
+          .sort((a, b) => b.occurrences_count - a.occurrences_count)
+          .slice(0, 6)
+          .map((item) => ({ code: item.code, count: item.occurrences_count })),
+        errorCodeByCategory: {
+          software: codes.filter((item) => item.category === "software").length,
+          technical: codes.filter((item) => item.category === "technical").length,
+        },
+      };
+    }
+
     const [engineersRes, categoriesRes, brandsRes, productsRes, errorCodesRes] = await Promise.all([
       supabase.from("engineers").select("id, availability_status"),
       supabase.from("product_categories").select("id"),
