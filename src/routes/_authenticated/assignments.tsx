@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -25,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { getPhase2References, listAssignments, saveAssignment, submitAssignmentReport } from "@/lib/phase2.functions";
+import { createAssignmentFromSource, getPhase2References, listAssignments, saveAssignment, submitAssignmentReport } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/assignments")({
@@ -39,6 +40,7 @@ function AssignmentsPage() {
   const queryClient = useQueryClient();
   const refsFn = useServerFn(getPhase2References);
   const listFn = useServerFn(listAssignments);
+  const createFromSourceFn = useServerFn(createAssignmentFromSource);
   const saveFn = useServerFn(saveAssignment);
   const submitFn = useServerFn(submitAssignmentReport);
   const { data: accessData } = useAccessContext();
@@ -55,10 +57,13 @@ function AssignmentsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [engineerFilter, setEngineerFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const pageSize = 10;
+  const [sourceType, setSourceType] = useState<"ticket" | "system">("ticket");
   const [form, setForm] = useState({ id: "", ticket_id: "", customer_system_id: "", engineer_id: "", assignment_type: "repair_visit", scheduled_date: "", status: "pending", work_done: "", difficulties: "", recommendations: "" });
 
   const filteredAssignments = useMemo(() => {
@@ -66,10 +71,12 @@ function AssignmentsPage() {
       if (statusFilter !== "all" && assignment.status !== statusFilter) return false;
       if (typeFilter !== "all" && assignment.assignment_type !== typeFilter) return false;
       if (engineerFilter !== "all" && assignment.engineer_id !== engineerFilter) return false;
+      if (fromDate && (!assignment.scheduled_date || new Date(assignment.scheduled_date) < new Date(fromDate))) return false;
+      if (toDate && (!assignment.scheduled_date || new Date(assignment.scheduled_date) > new Date(`${toDate}T23:59:59`))) return false;
       const searchBucket = `${assignment.id} ${assignment.status} ${assignment.assignment_type}`.toLowerCase();
       return searchBucket.includes(search.toLowerCase());
     });
-  }, [assignments, statusFilter, typeFilter, engineerFilter, search]);
+  }, [assignments, statusFilter, typeFilter, engineerFilter, search, fromDate, toDate]);
 
   const totalPages = Math.max(1, Math.ceil(filteredAssignments.length / pageSize));
   const paginatedAssignments = useMemo(() => {
@@ -79,7 +86,7 @@ function AssignmentsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, typeFilter, engineerFilter]);
+  }, [search, statusFilter, typeFilter, engineerFilter, fromDate, toDate]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -93,20 +100,33 @@ function AssignmentsPage() {
   const submitAssignment = async () => {
     try {
       if (canManage) {
-        await saveFn({
-          data: {
-            id: form.id || undefined,
-            ticket_id: form.ticket_id || null,
-            customer_system_id: form.customer_system_id || null,
-            engineer_id: form.engineer_id,
-            assignment_type: form.assignment_type as "repair_visit" | "new_installation",
-            scheduled_date: form.scheduled_date || null,
-            status: form.status as "pending" | "in_progress" | "completed" | "cancelled",
-            work_done: form.work_done || null,
-            difficulties: form.difficulties || null,
-            recommendations: form.recommendations || null,
-          },
-        });
+        if (!form.id) {
+          await createFromSourceFn({
+            data: {
+              ticket_id: sourceType === "ticket" ? form.ticket_id || null : null,
+              customer_system_id: sourceType === "system" ? form.customer_system_id || null : null,
+              engineer_id: form.engineer_id,
+              assignment_type: form.assignment_type as "repair_visit" | "new_installation",
+              scheduled_date: form.scheduled_date || null,
+              notes: form.recommendations || null,
+            },
+          });
+        } else {
+          await saveFn({
+            data: {
+              id: form.id || undefined,
+              ticket_id: form.ticket_id || null,
+              customer_system_id: form.customer_system_id || null,
+              engineer_id: form.engineer_id,
+              assignment_type: form.assignment_type as "repair_visit" | "new_installation",
+              scheduled_date: form.scheduled_date || null,
+              status: form.status as "pending" | "in_progress" | "completed" | "cancelled",
+              work_done: form.work_done || null,
+              difficulties: form.difficulties || null,
+              recommendations: form.recommendations || null,
+            },
+          });
+        }
       } else {
         await submitFn({
           data: {
@@ -153,6 +173,8 @@ function AssignmentsPage() {
           <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger><SelectValue placeholder="الحالة" /></SelectTrigger><SelectContent><SelectItem value="all">كل الحالات</SelectItem><SelectItem value="pending">قيد الانتظار</SelectItem><SelectItem value="in_progress">قيد التنفيذ</SelectItem><SelectItem value="completed">مكتملة</SelectItem><SelectItem value="cancelled">ملغاة</SelectItem></SelectContent></Select>
           <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger><SelectValue placeholder="النوع" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأنواع</SelectItem><SelectItem value="repair_visit">زيارة إصلاح</SelectItem><SelectItem value="new_installation">تركيب جديد</SelectItem></SelectContent></Select>
           <Select value={engineerFilter} onValueChange={setEngineerFilter}><SelectTrigger><SelectValue placeholder="المهندس" /></SelectTrigger><SelectContent><SelectItem value="all">كل المهندسين</SelectItem>{(refs?.engineers ?? []).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
+          <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
         </div>
 
          <div className="rounded-lg border bg-card md:hidden">
@@ -186,7 +208,7 @@ function AssignmentsPage() {
                   <TableCell>{refs?.engineers.find((e) => e.id === a.engineer_id)?.name ?? "—"}</TableCell>
                   <TableCell>{statusBadge(a.status)}</TableCell>
                   <TableCell>{a.scheduled_date ? new Date(a.scheduled_date).toLocaleString("ar-EG") : "—"}</TableCell>
-                  {(canManage || canSubmit) && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, ticket_id: a.ticket_id ?? "", customer_system_id: a.customer_system_id ?? "", engineer_id: a.engineer_id, assignment_type: a.assignment_type, scheduled_date: a.scheduled_date ? a.scheduled_date.slice(0, 16) : "", status: a.status, work_done: a.work_done ?? "", difficulties: a.difficulties ?? "", recommendations: a.recommendations ?? "" }); setOpen(true); }}>تحديث</Button></TableCell>}
+                   {(canManage || canSubmit) && <TableCell className="text-left"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, ticket_id: a.ticket_id ?? "", customer_system_id: a.customer_system_id ?? "", engineer_id: a.engineer_id, assignment_type: a.assignment_type, scheduled_date: a.scheduled_date ? a.scheduled_date.slice(0, 16) : "", status: a.status, work_done: a.work_done ?? "", difficulties: a.difficulties ?? "", recommendations: a.recommendations ?? "" }); setOpen(true); }}>تحديث</Button><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/assignments/$assignmentId" params={{ assignmentId: a.id }}>تفاصيل</Link></Button></div></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
@@ -223,6 +245,7 @@ function AssignmentsPage() {
                 <p className="font-medium">تاريخ الخدمة</p>
                 <p className="text-muted-foreground">آخر تحديث: {selectedAssignment.updated_at ? new Date(selectedAssignment.updated_at).toLocaleString("ar-EG") : "—"}</p>
                 <p className="text-muted-foreground">موعد التنفيذ: {selectedAssignment.scheduled_date ? new Date(selectedAssignment.scheduled_date).toLocaleString("ar-EG") : "—"}</p>
+                <Button asChild size="sm" className="mt-2"><Link to="/_authenticated/field-task/$assignmentId" params={{ assignmentId: selectedAssignment.id }}>صفحة المهمة الميدانية</Link></Button>
               </div>
             </div>
           </div>
@@ -235,10 +258,12 @@ function AssignmentsPage() {
           <form className="space-y-3" onSubmit={submit}>
             {canManage && (
               <>
-                <div className="space-y-2"><Label>التذكرة</Label><Select value={form.ticket_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, ticket_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(refs?.tickets ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.status}</SelectItem>)}</SelectContent></Select></div>
-                <div className="space-y-2"><Label>نظام العميل</Label><Select value={form.customer_system_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, customer_system_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(refs?.customerSystems ?? []).map((s) => <SelectItem key={s.id} value={s.id}>{s.system_name}</SelectItem>)}</SelectContent></Select></div>
+                {!form.id && <div className="space-y-2"><Label>مصدر المهمة</Label><Select value={sourceType} onValueChange={(v) => setSourceType(v as "ticket" | "system")}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ticket">من تذكرة</SelectItem><SelectItem value="system">من نظام عميل</SelectItem></SelectContent></Select></div>}
+                {sourceType === "ticket" && <div className="space-y-2"><Label>التذكرة</Label><Select value={form.ticket_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, ticket_id: v === "none" ? "" : v, customer_system_id: "" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">اختر تذكرة</SelectItem>{(refs?.tickets ?? []).map((t) => <SelectItem key={t.id} value={t.id}>{t.id.slice(0, 8)} - {t.status}</SelectItem>)}</SelectContent></Select></div>}
+                {sourceType === "system" && <div className="space-y-2"><Label>نظام العميل</Label><Select value={form.customer_system_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, customer_system_id: v === "none" ? "" : v, ticket_id: "" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">اختر نظام</SelectItem>{(refs?.customerSystems ?? []).map((s) => <SelectItem key={s.id} value={s.id}>{s.system_name}</SelectItem>)}</SelectContent></Select></div>}
                 <div className="space-y-2"><Label>المهندس</Label><Select value={form.engineer_id} onValueChange={(v) => setForm((p) => ({ ...p, engineer_id: v }))}><SelectTrigger><SelectValue placeholder="اختر مهندس" /></SelectTrigger><SelectContent>{(refs?.engineers ?? []).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-2"><Label>نوع المهمة</Label><Select value={form.assignment_type} onValueChange={(v) => setForm((p) => ({ ...p, assignment_type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="repair_visit">زيارة إصلاح</SelectItem><SelectItem value="new_installation">تركيب جديد</SelectItem></SelectContent></Select></div>
+                <div className="space-y-2"><Label>موعد التنفيذ</Label><Input type="datetime-local" value={form.scheduled_date} onChange={(e) => setForm((p) => ({ ...p, scheduled_date: e.target.value }))} /></div>
               </>
             )}
             <div className="space-y-2"><Label>الحالة</Label><Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">قيد الانتظار</SelectItem><SelectItem value="in_progress">قيد التنفيذ</SelectItem><SelectItem value="completed">مكتملة</SelectItem><SelectItem value="cancelled">ملغاة</SelectItem></SelectContent></Select></div>
