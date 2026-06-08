@@ -485,6 +485,68 @@ export const saveSystemAsset = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const saveCustomerSystemWithAssets = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => customerSystemWithAssetsSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    const systemPayload = data.system;
+    let systemId = systemPayload.id;
+
+    if (systemId) {
+      const { data: updated, error } = await supabase
+        .from("customer_systems")
+        .update({
+          customer_id: systemPayload.customer_id,
+          system_name: systemPayload.system_name,
+          installation_date: systemPayload.installation_date || null,
+          status: systemPayload.status,
+          notes: systemPayload.notes ?? null,
+        })
+        .eq("id", systemId)
+        .select("id")
+        .single();
+      if (error) throw new Error(`تعذر تعديل نظام العميل: ${error.message}`);
+      systemId = updated.id;
+
+      const { error: deleteAssetsError } = await supabase.from("system_assets").delete().eq("customer_system_id", systemId);
+      if (deleteAssetsError) throw new Error(`تعذر تحديث مكونات النظام: ${deleteAssetsError.message}`);
+    } else {
+      const { data: created, error } = await supabase
+        .from("customer_systems")
+        .insert({
+          customer_id: systemPayload.customer_id,
+          system_name: systemPayload.system_name,
+          installation_date: systemPayload.installation_date || null,
+          status: systemPayload.status,
+          notes: systemPayload.notes ?? null,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(`تعذر إنشاء نظام العميل: ${error.message}`);
+      systemId = created.id;
+    }
+
+    if (data.assets.length > 0) {
+      const rows = data.assets.map((asset) => ({
+        customer_system_id: systemId,
+        product_id: asset.product_id,
+        quantity: asset.quantity,
+        serial_number: asset.serial_number ?? null,
+        warranty_status: asset.warranty_status,
+        notes: asset.notes ?? null,
+      }));
+
+      const { error: insertAssetsError } = await supabase.from("system_assets").insert(rows);
+      if (insertAssetsError) throw new Error(`تعذر حفظ مكونات النظام: ${insertAssetsError.message}`);
+    }
+
+    return { ok: true, id: systemId, assets_count: data.assets.length };
+  });
+
 export const listTickets = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
