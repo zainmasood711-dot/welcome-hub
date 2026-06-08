@@ -326,10 +326,10 @@ function FieldTaskPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">مكوّنات النظام + السجل السابق</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
-            {(data?.installed_components ?? []).map((item) => <p key={item.id}>• {item.product_model} × {item.quantity}</p>)}
+            {(data?.installed_components ?? []).map((item: any) => <p key={item.id}>• {item.product_model} × {item.quantity}</p>)}
             {(data?.installed_components ?? []).length === 0 && <p className="text-muted-foreground">لا توجد مكونات مسجلة لهذا النظام.</p>}
             <hr className="my-2" />
-            {(data?.previous_tickets ?? []).slice(0, 3).map((item) => <p key={item.id}>تذكرة #{item.id.slice(0, 8)} - {item.status}</p>)}
+            {(data?.previous_tickets ?? []).slice(0, 3).map((item: any) => <p key={item.id}>تذكرة #{item.id.slice(0, 8)} - {item.status}</p>)}
             {(data?.previous_tickets ?? []).length === 0 && <p className="text-muted-foreground">لا توجد تذاكر سابقة.</p>}
           </CardContent>
         </Card>
@@ -374,7 +374,7 @@ function FieldTaskPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">تقييم المعرفة</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="مقال المعرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(data?.knowledge_articles ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select>
+            <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="مقال المعرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(data?.knowledge_articles ?? []).map((item: any) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select>
             <Select value={form.knowledge_feedback_rating || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_feedback_rating: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="نتيجة الحل" /></SelectTrigger><SelectContent><SelectItem value="none">بدون تقييم</SelectItem><SelectItem value="success">ناجح</SelectItem><SelectItem value="partial">جزئي</SelectItem><SelectItem value="failure">فاشل</SelectItem></SelectContent></Select>
             <Textarea placeholder="ملاحظات تقييم المعرفة" value={form.knowledge_feedback_notes} onChange={(e) => setForm((p) => ({ ...p, knowledge_feedback_notes: e.target.value }))} />
           </CardContent>
