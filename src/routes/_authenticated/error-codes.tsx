@@ -5,6 +5,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,7 +13,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +60,7 @@ function ErrorCodesPage() {
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [productFilter, setProductFilter] = useState("all");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     id: "",
@@ -75,14 +76,25 @@ function ErrorCodesPage() {
   const filtered = useMemo(() => {
     return errorCodes.filter((item) => {
       if (categoryFilter !== "all" && item.category !== categoryFilter) return false;
+      if (productFilter !== "all" && item.product_id !== productFilter) return false;
       const productModel = products.find((p) => p.id === item.product_id)?.model ?? "";
-      const text = `${item.code} ${item.description ?? ""} ${productModel}`.toLowerCase();
+      const text = `${item.code} ${item.description ?? ""} ${item.common_causes ?? ""} ${item.recommended_solution ?? ""} ${productModel}`.toLowerCase();
       return text.includes(search.toLowerCase());
     });
-  }, [errorCodes, products, search, categoryFilter]);
+  }, [errorCodes, products, search, categoryFilter, productFilter]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (form.code.trim().length < 1 || form.code.trim().length > 60) {
+      toast.error("قيمة كود الخطأ غير صالحة");
+      return;
+    }
+    if (form.occurrences_count < 0) {
+      toast.error("عدد التكرار لا يمكن أن يكون سالبًا");
+      return;
+    }
+
     try {
       await saveFn({
         data: {
@@ -118,7 +130,7 @@ function ErrorCodesPage() {
     <AppShell roles={roles} title="إدارة رموز الأخطاء">
       <div className="space-y-4">
         <div className="flex flex-col gap-2 rounded-lg border bg-card p-4 md:flex-row md:items-center md:justify-between">
-          <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
             <Input placeholder="بحث بالكود أو الوصف أو الموديل" value={search} onChange={(e) => setSearch(e.target.value)} />
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger>
@@ -128,6 +140,19 @@ function ErrorCodesPage() {
                 <SelectItem value="all">كل التصنيفات</SelectItem>
                 <SelectItem value="technical">تقني</SelectItem>
                 <SelectItem value="software">برمجي</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={productFilter} onValueChange={setProductFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="المنتج" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المنتجات</SelectItem>
+                {products.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.model}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -142,6 +167,8 @@ function ErrorCodesPage() {
                 <TableHead>التصنيف</TableHead>
                 <TableHead>المنتج</TableHead>
                 <TableHead>الوصف</TableHead>
+                    <TableHead>الأسباب الشائعة</TableHead>
+                    <TableHead>الحل المقترح</TableHead>
                 <TableHead>عدد التكرار</TableHead>
                 {canManage && <TableHead className="text-left">إجراء</TableHead>}
               </TableRow>
@@ -149,13 +176,13 @@ function ErrorCodesPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     جاري تحميل البيانات...
                   </TableCell>
                 </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     لا توجد رموز أخطاء مطابقة.
                   </TableCell>
                 </TableRow>
@@ -163,9 +190,11 @@ function ErrorCodesPage() {
                 filtered.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.code}</TableCell>
-                    <TableCell>{item.category === "technical" ? "تقني" : "برمجي"}</TableCell>
+                    <TableCell>{item.category === "technical" ? <Badge>تقني</Badge> : <Badge variant="secondary">برمجي</Badge>}</TableCell>
                     <TableCell>{products.find((product) => product.id === item.product_id)?.model ?? "—"}</TableCell>
                     <TableCell className="max-w-[320px] truncate">{item.description ?? "—"}</TableCell>
+                    <TableCell className="max-w-[260px] truncate">{item.common_causes ?? "—"}</TableCell>
+                    <TableCell className="max-w-[260px] truncate">{item.recommended_solution ?? "—"}</TableCell>
                     <TableCell>{item.occurrences_count}</TableCell>
                     {canManage && (
                       <TableCell className="text-left">
@@ -267,11 +296,9 @@ function ErrorCodesPage() {
 
             <div className="flex justify-start gap-2">
               <Button type="submit">حفظ</Button>
-              <DialogTrigger asChild>
-                <Button type="button" variant="outline">
-                  إلغاء
-                </Button>
-              </DialogTrigger>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                إلغاء
+              </Button>
             </div>
           </form>
         </DialogContent>
