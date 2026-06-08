@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import type { AppRole } from "@/lib/roles";
-import { roleLabels } from "@/lib/roles";
+import { hasAnyPermission, roleLabels } from "@/lib/roles";
 
 type AppShellProps = {
   children: ReactNode;
@@ -18,23 +18,34 @@ type NavItem = {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
-  roles?: AppRole[];
+  permissions?: (
+    | "dashboard.read"
+    | "engineers.read_all"
+    | "engineers.read_assigned"
+    | "products.read"
+    | "error_codes.read"
+  )[];
 };
 
 const navItems: NavItem[] = [
-  { to: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard },
-  { to: "/engineers", label: "المهندسون", icon: Wrench, roles: ["support_engineer"] as AppRole[] },
+  { to: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, permissions: ["dashboard.read"] },
+  {
+    to: "/engineers",
+    label: "المهندسون",
+    icon: Wrench,
+    permissions: ["engineers.read_all", "engineers.read_assigned"],
+  },
   {
     to: "/catalog",
     label: "الفئات والعلامات والمنتجات",
     icon: Settings,
-    roles: ["support_engineer"],
+    permissions: ["products.read"],
   },
   {
     to: "/error-codes",
     label: "رموز الأخطاء",
     icon: AlertTriangle,
-    roles: ["support_engineer"],
+    permissions: ["error_codes.read"],
   },
 ];
 
@@ -42,8 +53,8 @@ export function AppShell({ children, title, roles }: AppShellProps) {
   const location = useLocation();
 
   const visibleItems = navItems.filter((item) => {
-    if (!item.roles) return true;
-    return item.roles.some((role) => roles.includes(role));
+    if (!item.permissions) return true;
+    return hasAnyPermission(roles, item.permissions);
   });
 
   return (
