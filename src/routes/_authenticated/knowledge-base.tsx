@@ -105,10 +105,10 @@ function KnowledgeBasePage() {
           title: sourceForm.title || null,
         },
       });
-      if (result.created === false) {
-        toast.info("المادة موجودة مسبقًا ولن يتم إنشاء نسخة مكررة");
-      } else {
+      if (result.articleId) {
         toast.success("تم إنشاء المادة المعرفية من المصدر بنجاح");
+      } else {
+        toast.info("تمت المعالجة بنجاح");
       }
       setCreateFromSourceOpen(false);
       setSourceForm({ source_type: "ticket", source_id: "", title: "" });
