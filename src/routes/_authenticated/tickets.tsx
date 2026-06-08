@@ -282,10 +282,11 @@ function TicketsPage() {
               ) : paginatedTickets.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell>{refs?.customers.find((c) => c.id === t.customer_id)?.name ?? "—"}</TableCell>
-                  <TableCell>{t.ticket_type}</TableCell><TableCell>{statusBadge(t.status)}</TableCell><TableCell>{t.priority}</TableCell>
+                  <TableCell>{t.ticket_type}</TableCell>
                   <TableCell>{refs?.productCategories?.find((cat) => cat.id === t.category_id)?.name_ar ?? "—"}</TableCell>
                   <TableCell>{refs?.errorCodes?.find((code) => code.id === t.error_code_id)?.code ?? t.error_code_text ?? "—"}</TableCell>
-                  <TableCell>{statusBadge(t.status)}</TableCell><TableCell>{t.priority}</TableCell>
+                  <TableCell>{statusBadge(t.status)}</TableCell>
+                  <TableCell>{t.priority}</TableCell>
                   <TableCell className="max-w-[420px] truncate">{t.description}</TableCell>
                   {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", category_id: t.category_id ?? "", error_code_id: t.error_code_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
                 </TableRow>
