@@ -266,7 +266,7 @@ export const saveCustomerSystem = createServerFn({ method: "POST" })
     await assertSupportRole(supabase, userId);
 
     if (data.id) {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("customer_systems")
         .update({
           customer_id: data.customer_id,
@@ -275,21 +275,27 @@ export const saveCustomerSystem = createServerFn({ method: "POST" })
           status: data.status,
           notes: data.notes ?? null,
         })
-        .eq("id", data.id);
+        .eq("id", data.id)
+        .select("id")
+        .single();
       if (error) throw new Error(`تعذر تعديل نظام العميل: ${error.message}`);
-      return { ok: true };
+      return { ok: true, id: updated.id };
     }
 
-    const { error } = await supabase.from("customer_systems").insert({
-      customer_id: data.customer_id,
-      system_name: data.system_name,
-      installation_date: data.installation_date || null,
-      status: data.status,
-      notes: data.notes ?? null,
-      created_by: userId,
-    });
+    const { data: created, error } = await supabase
+      .from("customer_systems")
+      .insert({
+        customer_id: data.customer_id,
+        system_name: data.system_name,
+        installation_date: data.installation_date || null,
+        status: data.status,
+        notes: data.notes ?? null,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(`تعذر إنشاء نظام العميل: ${error.message}`);
-    return { ok: true };
+    return { ok: true, id: created.id };
   });
 
 export const listSystemAssets = createServerFn({ method: "GET" })
