@@ -134,6 +134,8 @@ const readNotificationSchema = z.object({
 
 const knowledgeSearchSchema = z.object({
   affected_product_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
   error_code_text: z.string().trim().max(80).optional().nullable(),
   issue_description: z.string().trim().max(2500).optional().nullable(),
   limit: z.number().int().min(1).max(10).default(5),
