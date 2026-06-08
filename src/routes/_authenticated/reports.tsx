@@ -34,6 +34,29 @@ function ReportsPage() {
           <Card><CardHeader><CardTitle className="text-sm">إجمالي المهام</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{data?.totalAssignments ?? 0}</CardContent></Card>
         </section>
 
+        <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle className="text-base">ملخص التذاكر</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded border p-2">مفتوحة: <span className="font-semibold">{data?.ticketSummary?.open ?? 0}</span></div>
+              <div className="rounded border p-2">قيد التنفيذ: <span className="font-semibold">{data?.ticketSummary?.in_progress ?? 0}</span></div>
+              <div className="rounded border p-2">عن بُعد: <span className="font-semibold">{data?.ticketSummary?.resolved_remote ?? 0}</span></div>
+              <div className="rounded border p-2">مُسندة: <span className="font-semibold">{data?.ticketSummary?.assigned ?? 0}</span></div>
+              <div className="rounded border p-2 col-span-2">مغلقة: <span className="font-semibold">{data?.ticketSummary?.closed ?? 0}</span></div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">ملخص المهام</CardTitle></CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded border p-2">Pending: <span className="font-semibold">{data?.assignmentSummary?.pending ?? 0}</span></div>
+              <div className="rounded border p-2">In progress: <span className="font-semibold">{data?.assignmentSummary?.in_progress ?? 0}</span></div>
+              <div className="rounded border p-2">Completed: <span className="font-semibold">{data?.assignmentSummary?.completed ?? 0}</span></div>
+              <div className="rounded border p-2">Overdue: <span className="font-semibold">{data?.assignmentSummary?.overdue ?? 0}</span></div>
+            </CardContent>
+          </Card>
+        </section>
+
         <Card>
           <CardHeader><CardTitle className="text-base">تحليل الأعطال المتكررة</CardTitle></CardHeader>
           <CardContent className="rounded-lg border">
@@ -45,8 +68,8 @@ function ReportsPage() {
           <CardHeader><CardTitle className="text-base">أداء المهندسين</CardTitle></CardHeader>
           <CardContent className="rounded-lg border">
             <Table>
-              <TableHeader><TableRow><TableHead>المهندس</TableHead><TableHead>إجمالي المهام</TableHead><TableHead>مكتملة</TableHead><TableHead>قيد التنفيذ</TableHead></TableRow></TableHeader>
-              <TableBody>{(data?.engineerPerformance ?? []).map((item) => <TableRow key={item.engineer_id}><TableCell>{item.engineer_name}</TableCell><TableCell>{item.total}</TableCell><TableCell>{item.completed}</TableCell><TableCell>{item.in_progress}</TableCell></TableRow>)}</TableBody>
+              <TableHeader><TableRow><TableHead>المهندس</TableHead><TableHead>إجمالي المهام</TableHead><TableHead>مكتملة</TableHead><TableHead>متأخرة</TableHead><TableHead>معدل الإنجاز</TableHead></TableRow></TableHeader>
+              <TableBody>{(data?.engineerPerformance ?? []).map((item) => <TableRow key={item.engineer_id}><TableCell>{item.engineer_name}</TableCell><TableCell>{item.total}</TableCell><TableCell>{item.completed}</TableCell><TableCell>{item.delayed ?? 0}</TableCell><TableCell>{item.completion_rate ?? 0}%</TableCell></TableRow>)}</TableBody>
             </Table>
           </CardContent>
         </Card>
@@ -82,6 +105,36 @@ function ReportsPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle className="text-base">الأكثر استخدامًا من قاعدة المعرفة</CardTitle></CardHeader>
+            <CardContent className="rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>المادة</TableHead><TableHead>عدد الاستخدام</TableHead><TableHead>الفاعلية</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(data?.knowledgeBaseUsage?.mostUsedArticles ?? []).map((item) => (
+                    <TableRow key={item.id}><TableCell>{item.title}</TableCell><TableCell>{item.usage_count}</TableCell><TableCell>{item.effectiveness_rate}%</TableCell></TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">الأعلى نجاحًا من قاعدة المعرفة</CardTitle></CardHeader>
+            <CardContent className="rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>المادة</TableHead><TableHead>الفاعلية</TableHead><TableHead>عدد الاستخدام</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(data?.knowledgeBaseUsage?.highestSuccessArticles ?? []).map((item) => (
+                    <TableRow key={`${item.id}-best`}><TableCell>{item.title}</TableCell><TableCell>{item.effectiveness_rate}%</TableCell><TableCell>{item.usage_count}</TableCell></TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </section>
       </div>
     </AppShell>
   );

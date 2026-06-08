@@ -967,98 +967,51 @@ export const getOperationsReport = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { supabase, userId } = context;
     const roles = await getUserRoles(supabase, userId);
+    const source = roles.includes("manager") ? (await import("@/integrations/supabase/client.server")).supabaseAdmin : supabase;
 
-    if (roles.includes("manager")) {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const [ticketsRes, assignmentsRes, engineersRes, productsRes] = await Promise.all([
-        supabaseAdmin.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
-        supabaseAdmin.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
-        supabaseAdmin.from("engineers").select("id, name"),
-        supabaseAdmin.from("products").select("id, model"),
-      ]);
-
-      const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error].filter(Boolean);
-      if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
-
-      const tickets = ticketsRes.data ?? [];
-      const assignments = assignmentsRes.data ?? [];
-      const engineers = engineersRes.data ?? [];
-      const products = productsRes.data ?? [];
-
-      const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
-      const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
-
-      const recurringMap = new Map<string, number>();
-      for (const t of tickets) {
-        if (!t.error_code_text) continue;
-        recurringMap.set(t.error_code_text, (recurringMap.get(t.error_code_text) ?? 0) + 1);
-      }
-      const recurringProblems = [...recurringMap.entries()]
-        .map(([code, count]) => ({ code, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-
-      const engineerPerformance = engineers.map((engineer) => {
-        const engineerAssignments = assignments.filter((a) => a.engineer_id === engineer.id);
-        return {
-          engineer_id: engineer.id,
-          engineer_name: engineer.name,
-          total: engineerAssignments.length,
-          completed: engineerAssignments.filter((a) => a.status === "completed").length,
-          in_progress: engineerAssignments.filter((a) => a.status === "in_progress").length,
-        };
-      });
-
-      const monthlyMap = new Map<string, { month: string; newTickets: number; closedTickets: number; completedAssignments: number }>();
-      for (const ticket of tickets) {
-        const month = new Date(ticket.created_at).toISOString().slice(0, 7);
-        const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
-        current.newTickets += 1;
-        if (ticket.status === "closed") current.closedTickets += 1;
-        monthlyMap.set(month, current);
-      }
-      for (const assignment of assignments) {
-        const month = new Date(assignment.created_at).toISOString().slice(0, 7);
-        const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
-        if (assignment.status === "completed") current.completedAssignments += 1;
-        monthlyMap.set(month, current);
-      }
-
-      const productReliability = products.map((product) => {
-        const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
-        const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
-        return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
-      }).filter((item) => item.totalIssues > 0).sort((a, b) => b.totalIssues - a.totalIssues).slice(0, 10);
-
-      return {
-        unresolved,
-        delayed,
-        totalTickets: tickets.length,
-        totalAssignments: assignments.length,
-        recurringProblems,
-        engineerPerformance,
-        monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
-        productReliability,
-      };
-    }
-
-    const [ticketsRes, assignmentsRes, engineersRes, productsRes] = await Promise.all([
-      supabase.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
-      supabase.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
-      supabase.from("engineers").select("id, name"),
-      supabase.from("products").select("id, model"),
+    const [ticketsRes, assignmentsRes, engineersRes, productsRes, kbRes] = await Promise.all([
+      source.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
+      source.from("assignments").select("id, engineer_id, status, assignment_type, created_at, scheduled_date"),
+      source.from("engineers").select("id, name"),
+      source.from("products").select("id, model"),
+      source.from("knowledge_base").select("id, title, effectiveness_rate, success_count, fail_count"),
     ]);
 
-    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error].filter(Boolean);
+    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error, kbRes.error].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
     const tickets = ticketsRes.data ?? [];
     const assignments = assignmentsRes.data ?? [];
     const engineers = engineersRes.data ?? [];
     const products = productsRes.data ?? [];
+    const knowledge = kbRes.data ?? [];
+
+    const ticketSummary = {
+      open: tickets.filter((t) => t.status === "new").length,
+      in_progress: tickets.filter((t) => t.status === "in_progress").length,
+      resolved_remote: tickets.filter((t) => t.status === "resolved_remote").length,
+      assigned: tickets.filter((t) => t.status === "assigned_field").length,
+      closed: tickets.filter((t) => t.status === "closed").length,
+    };
+
+    const now = Date.now();
+    const isOverdue = (assignment: (typeof assignments)[number]) => {
+      if (assignment.status === "completed" || assignment.status === "cancelled") return false;
+      if (assignment.scheduled_date) {
+        return new Date(assignment.scheduled_date).getTime() < now;
+      }
+      return new Date(assignment.created_at).getTime() < now - 1000 * 60 * 60 * 24 * 3;
+    };
+
+    const assignmentSummary = {
+      pending: assignments.filter((a) => a.status === "pending").length,
+      in_progress: assignments.filter((a) => a.status === "in_progress").length,
+      completed: assignments.filter((a) => a.status === "completed").length,
+      overdue: assignments.filter(isOverdue).length,
+    };
 
     const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
-    const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
+    const delayed = assignmentSummary.overdue;
 
     const recurringMap = new Map<string, number>();
     for (const t of tickets) {
@@ -1072,12 +1025,17 @@ export const getOperationsReport = createServerFn({ method: "GET" })
 
     const engineerPerformance = engineers.map((engineer) => {
       const engineerAssignments = assignments.filter((a) => a.engineer_id === engineer.id);
+      const completedAssignments = engineerAssignments.filter((a) => a.status === "completed").length;
+      const delayedAssignments = engineerAssignments.filter(isOverdue).length;
+      const completionRate = engineerAssignments.length === 0 ? 0 : Number(((completedAssignments / engineerAssignments.length) * 100).toFixed(2));
       return {
         engineer_id: engineer.id,
         engineer_name: engineer.name,
         total: engineerAssignments.length,
-        completed: engineerAssignments.filter((a) => a.status === "completed").length,
+        completed: completedAssignments,
         in_progress: engineerAssignments.filter((a) => a.status === "in_progress").length,
+        delayed: delayedAssignments,
+        completion_rate: completionRate,
       };
     });
 
@@ -1096,20 +1054,50 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       monthlyMap.set(month, current);
     }
 
-    const productReliability = products.map((product) => {
-      const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
-      const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
-      return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
-    }).filter((item) => item.totalIssues > 0).sort((a, b) => b.totalIssues - a.totalIssues).slice(0, 10);
+    const productReliability = products
+      .map((product) => {
+        const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
+        const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
+        return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
+      })
+      .filter((item) => item.totalIssues > 0)
+      .sort((a, b) => b.totalIssues - a.totalIssues)
+      .slice(0, 10);
+
+    const knowledgeBaseUsage = {
+      mostUsedArticles: [...knowledge]
+        .map((article) => ({
+          id: article.id,
+          title: article.title,
+          usage_count: article.success_count + article.fail_count,
+          effectiveness_rate: article.effectiveness_rate,
+        }))
+        .sort((a, b) => b.usage_count - a.usage_count)
+        .slice(0, 6),
+      highestSuccessArticles: [...knowledge]
+        .map((article) => ({
+          id: article.id,
+          title: article.title,
+          usage_count: article.success_count + article.fail_count,
+          effectiveness_rate: article.effectiveness_rate,
+        }))
+        .sort((a, b) => b.effectiveness_rate - a.effectiveness_rate)
+        .slice(0, 6),
+    };
 
     return {
       unresolved,
       delayed,
       totalTickets: tickets.length,
       totalAssignments: assignments.length,
+      ticketSummary,
+      assignmentSummary,
       recurringProblems,
+      commonErrorCodes: recurringProblems,
       engineerPerformance,
       monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
       productReliability,
+      problematicProducts: productReliability,
+      knowledgeBaseUsage,
     };
   });
