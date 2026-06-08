@@ -16,7 +16,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { getPhase2References, listKnowledgeBase, listTickets, saveCustomer, saveKnowledgeFeedback, saveTicket } from "@/lib/phase2.functions";
+import {
+  createKnowledgeArticleFromTicket,
+  getKnowledgeSuggestions,
+  getPhase2References,
+  listKnowledgeBase,
+  listTickets,
+  saveCustomer,
+  saveTicket,
+} from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/tickets")({
@@ -31,7 +39,8 @@ function TicketsPage() {
   const listFn = useServerFn(listTickets);
   const saveFn = useServerFn(saveTicket);
   const saveCustomerFn = useServerFn(saveCustomer);
-  const saveFeedbackFn = useServerFn(saveKnowledgeFeedback);
+  const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
+  const createFromTicketFn = useServerFn(createKnowledgeArticleFromTicket);
   const refsFn = useServerFn(getPhase2References);
   const kbFn = useServerFn(listKnowledgeBase);
   const { data: accessData } = useAccessContext();
@@ -46,6 +55,7 @@ function TicketsPage() {
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [quickCustomer, setQuickCustomer] = useState({ name: "", phone: "", governorate: "", city: "", address: "" });
+  const [closeFeedback, setCloseFeedback] = useState({ rating: "success", notes: "" });
   const [form, setForm] = useState({
     id: "",
     customer_id: "",
@@ -61,30 +71,26 @@ function TicketsPage() {
     knowledge_base_id: "",
   });
 
-  const suggestedKnowledge = useMemo(() => {
-    const code = form.error_code_text.trim().toLowerCase();
-    const productId = form.affected_product_id;
-    const keywords = form.description.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  const { data: suggestedKnowledge = [] } = useQuery({
+    queryKey: ["knowledge-suggestions", form.affected_product_id, form.error_code_text, form.description],
+    queryFn: () =>
+      suggestKnowledgeFn({
+        data: {
+          affected_product_id: form.affected_product_id || null,
+          error_code_text: form.error_code_text || null,
+          issue_description: form.description || null,
+          limit: 4,
+        },
+      }),
+    enabled: Boolean(form.affected_product_id || form.error_code_text || form.description.trim().length >= 3),
+  });
 
-    const scored = knowledgeBase
-      .map((item) => {
-        let score = 0;
-        if (code && item.error_code_text?.toLowerCase() === code && item.product_id === productId) score += 10;
-        else if (code && item.error_code_text?.toLowerCase() === code) score += 6;
-        else if (productId && item.product_id === productId) score += 4;
-
-        const hay = `${item.title} ${item.issue_description} ${item.search_keywords ?? ""}`.toLowerCase();
-        const hits = keywords.filter((word) => hay.includes(word)).length;
-        score += Math.min(hits, 4);
-
-        return { ...item, score };
-      })
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
-
-    return scored;
-  }, [form.error_code_text, form.affected_product_id, form.description, knowledgeBase]);
+  const tierLabel: Record<1 | 2 | 3 | 4, string> = {
+    1: "أولوية 1: نفس كود الخطأ + نفس المنتج",
+    2: "أولوية 2: نفس كود الخطأ",
+    3: "أولوية 3: نفس المنتج/الموديل",
+    4: "أولوية 4: كلمات مفتاحية",
+  };
 
   const filteredCustomers = useMemo(() => {
     const q = customerSearch.toLowerCase();
@@ -108,6 +114,8 @@ function TicketsPage() {
           solution_type: (form.solution_type || null) as "remote" | "field" | "bring_to_center" | "no_fix_needed" | null,
           remote_solution_notes: form.remote_solution_notes || null,
           knowledge_base_id: form.knowledge_base_id || null,
+          knowledge_feedback_rating: form.status === "closed" ? (closeFeedback.rating as "success" | "failure" | "partial") : null,
+          knowledge_feedback_notes: form.status === "closed" ? closeFeedback.notes || null : null,
           resolved_by: null,
           resolved_at: null,
         },
@@ -115,7 +123,9 @@ function TicketsPage() {
       toast.success("تم حفظ التذكرة");
       setOpen(false);
       setForm({ id: "", customer_id: "", customer_system_id: "", ticket_type: "fault", status: "new", priority: "medium", description: "", affected_product_id: "", error_code_text: "", solution_type: "", remote_solution_notes: "", knowledge_base_id: "" });
+      setCloseFeedback({ rating: "success", notes: "" });
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذر حفظ التذكرة");
     }
@@ -145,7 +155,7 @@ function TicketsPage() {
   };
 
   const applyKnowledgeSuggestion = async (knowledgeId: string) => {
-    const selected = suggestedKnowledge.find((item) => item.id === knowledgeId);
+    const selected = knowledgeBase.find((item) => item.id === knowledgeId);
     if (!selected || !form.id) {
       setForm((prev) => ({
         ...prev,
@@ -175,23 +185,31 @@ function TicketsPage() {
         },
       });
 
-      if (accessData?.profile.engineer_id) {
-        await saveFeedbackFn({
-          data: {
-            knowledge_base_id: selected.id,
-            ticket_id: form.id,
-            engineer_id: accessData.profile.engineer_id,
-            rating: "partial",
-            notes: "تم استخدام الحل المقترح من شاشة التذاكر",
-          },
-        });
-      }
-
       toast.success("تم ربط التذكرة بالحل المقترح");
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذر تطبيق الحل المقترح");
+    }
+  };
+
+  const createKnowledgeFromTicket = async () => {
+    if (!form.id) {
+      toast.error("احفظ التذكرة أولاً قبل إنشاء مادة معرفية منها");
+      return;
+    }
+    try {
+      const result = await createFromTicketFn({ data: { ticket_id: form.id, title: null } });
+      if (result.created) {
+        toast.success("تم إنشاء مادة معرفية وربطها بالتذكرة");
+        setForm((prev) => ({ ...prev, knowledge_base_id: result.articleId }));
+      } else {
+        toast.info("يوجد مادة مشابهة بالفعل وتم منع التكرار");
+      }
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر إنشاء مادة المعرفة من التذكرة");
     }
   };
 
@@ -208,7 +226,7 @@ function TicketsPage() {
                   <TableCell>{refs?.customers.find((c) => c.id === t.customer_id)?.name ?? "—"}</TableCell>
                   <TableCell>{t.ticket_type}</TableCell><TableCell>{t.status}</TableCell><TableCell>{t.priority}</TableCell>
                   <TableCell className="max-w-[420px] truncate">{t.description}</TableCell>
-                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setOpen(true); }}>تعديل</Button></TableCell>}
+                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
@@ -248,6 +266,42 @@ function TicketsPage() {
             <div className="space-y-2"><Label>نوع الحل</Label><Select value={form.solution_type || "none"} onValueChange={(v) => setForm((p) => ({ ...p, solution_type: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem><SelectItem value="remote">عن بُعد</SelectItem><SelectItem value="field">ميداني</SelectItem><SelectItem value="bring_to_center">إحضار للمركز</SelectItem><SelectItem value="no_fix_needed">لا يتطلب إصلاح</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label>ملاحظات الحل عن بُعد</Label><Textarea value={form.remote_solution_notes} onChange={(e) => setForm((p) => ({ ...p, remote_solution_notes: e.target.value }))} /></div>
 
+            {canManage && form.id && form.remote_solution_notes.trim().length >= 10 && (
+              <div className="rounded border p-3">
+                <p className="text-sm mb-2">لو الحل الجديد مفيد وغير موجود بقاعدة المعرفة، يمكنك إنشاؤه مباشرة من هذه التذكرة.</p>
+                <Button type="button" variant="outline" onClick={createKnowledgeFromTicket}>
+                  إنشاء مادة معرفة من التذكرة
+                </Button>
+              </div>
+            )}
+
+            {form.status === "closed" && form.knowledge_base_id && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">تقييم نتيجة استخدام الحل عند إغلاق التذكرة</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>التقييم</Label>
+                      <Select value={closeFeedback.rating} onValueChange={(v) => setCloseFeedback((prev) => ({ ...prev, rating: v }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="success">ناجح</SelectItem>
+                          <SelectItem value="failure">فاشل</SelectItem>
+                          <SelectItem value="partial">جزئي</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>ملاحظات التقييم (اختياري)</Label>
+                      <Input value={closeFeedback.notes} onChange={(e) => setCloseFeedback((prev) => ({ ...prev, notes: e.target.value }))} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">الحلول المقترحة من قاعدة المعرفة</CardTitle>
@@ -262,7 +316,8 @@ function TicketsPage() {
                         <div>
                           <p className="font-medium text-sm">{item.title}</p>
                           <p className="text-xs text-muted-foreground line-clamp-2">{item.issue_description}</p>
-                          <div className="mt-1 flex gap-2">
+                           <div className="mt-1 flex flex-wrap gap-2">
+                             <Badge>{tierLabel[item.priority_tier as 1 | 2 | 3 | 4]}</Badge>
                             <Badge variant="secondary">فاعلية {item.effectiveness_rate}%</Badge>
                             <Badge variant="outline">استخدام {item.success_count + item.fail_count}</Badge>
                           </div>
