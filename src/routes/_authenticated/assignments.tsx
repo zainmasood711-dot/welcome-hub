@@ -1,11 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -45,6 +56,9 @@ function AssignmentsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [engineerFilter, setEngineerFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const pageSize = 10;
   const [form, setForm] = useState({ id: "", ticket_id: "", customer_system_id: "", engineer_id: "", assignment_type: "repair_visit", scheduled_date: "", status: "pending", work_done: "", difficulties: "", recommendations: "" });
 
   const filteredAssignments = useMemo(() => {
@@ -57,13 +71,26 @@ function AssignmentsPage() {
     });
   }, [assignments, statusFilter, typeFilter, engineerFilter, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredAssignments.length / pageSize));
+  const paginatedAssignments = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredAssignments.slice(start, start + pageSize);
+  }, [filteredAssignments, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, typeFilter, engineerFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
   const selectedAssignment = assignments.find((item) => item.id === selectedAssignmentId) ?? filteredAssignments[0] ?? null;
   const relatedTicket = refs?.tickets.find((item) => item.id === selectedAssignment?.ticket_id);
   const relatedSystem = refs?.customerSystems.find((item) => item.id === selectedAssignment?.customer_system_id);
   const relatedCustomer = refs?.customers.find((item) => item.id === relatedSystem?.customer_id || item.id === relatedTicket?.customer_id);
 
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitAssignment = async () => {
     try {
       if (canManage) {
         await saveFn({
@@ -93,10 +120,27 @@ function AssignmentsPage() {
       }
       toast.success("تم حفظ المهمة");
       setOpen(false);
+      setConfirmCancelOpen(false);
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذر حفظ المهمة");
     }
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (form.status === "cancelled") {
+      setConfirmCancelOpen(true);
+      return;
+    }
+    await submitAssignment();
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === "completed") return <Badge>مكتملة</Badge>;
+    if (status === "in_progress") return <Badge variant="secondary">قيد التنفيذ</Badge>;
+    if (status === "cancelled") return <Badge variant="destructive">ملغاة</Badge>;
+    return <Badge variant="outline">قيد الانتظار</Badge>;
   };
 
   return (
@@ -111,21 +155,50 @@ function AssignmentsPage() {
           <Select value={engineerFilter} onValueChange={setEngineerFilter}><SelectTrigger><SelectValue placeholder="المهندس" /></SelectTrigger><SelectContent><SelectItem value="all">كل المهندسين</SelectItem>{(refs?.engineers ?? []).map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}</SelectContent></Select>
         </div>
 
-        <div className="rounded-lg border bg-card">
+         <div className="rounded-lg border bg-card md:hidden">
+          {paginatedAssignments.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">لا توجد مهام مطابقة للبحث الحالي.</div>
+          ) : (
+            <div className="space-y-2 p-3">
+              {paginatedAssignments.map((a) => (
+                <button key={a.id} type="button" className="w-full rounded-md border p-3 text-right" onClick={() => setSelectedAssignmentId(a.id)}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{a.assignment_type === "repair_visit" ? "زيارة إصلاح" : "تركيب جديد"}</p>
+                    {statusBadge(a.status)}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{refs?.engineers.find((e) => e.id === a.engineer_id)?.name ?? "—"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{a.scheduled_date ? new Date(a.scheduled_date).toLocaleString("ar-EG") : "بدون موعد"}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="hidden rounded-lg border bg-card md:block">
           <Table>
             <TableHeader><TableRow><TableHead>النوع</TableHead><TableHead>المهندس</TableHead><TableHead>الحالة</TableHead><TableHead>موعد التنفيذ</TableHead>{(canManage || canSubmit) && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
             <TableBody>
-              {filteredAssignments.map((a) => (
+              {paginatedAssignments.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">لا توجد مهام مطابقة للبحث الحالي.</TableCell></TableRow>
+              ) : paginatedAssignments.map((a) => (
                 <TableRow key={a.id} onClick={() => setSelectedAssignmentId(a.id)} className="cursor-pointer">
                   <TableCell>{a.assignment_type === "repair_visit" ? "زيارة إصلاح" : "تركيب جديد"}</TableCell>
                   <TableCell>{refs?.engineers.find((e) => e.id === a.engineer_id)?.name ?? "—"}</TableCell>
-                  <TableCell>{a.status}</TableCell>
+                  <TableCell>{statusBadge(a.status)}</TableCell>
                   <TableCell>{a.scheduled_date ? new Date(a.scheduled_date).toLocaleString("ar-EG") : "—"}</TableCell>
                   {(canManage || canSubmit) && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, ticket_id: a.ticket_id ?? "", customer_system_id: a.customer_system_id ?? "", engineer_id: a.engineer_id, assignment_type: a.assignment_type, scheduled_date: a.scheduled_date ? a.scheduled_date.slice(0, 16) : "", status: a.status, work_done: a.work_done ?? "", difficulties: a.difficulties ?? "", recommendations: a.recommendations ?? "" }); setOpen(true); }}>تحديث</Button></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">صفحة {page} من {totalPages}</p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>السابق</Button>
+            <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>التالي</Button>
+          </div>
         </div>
 
         {selectedAssignment && (
@@ -176,6 +249,19 @@ function AssignmentsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={confirmCancelOpen} onOpenChange={setConfirmCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد إلغاء المهمة</AlertDialogTitle>
+            <AlertDialogDescription>سيتم تغيير حالة المهمة إلى "ملغاة". هل تريد المتابعة؟</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>رجوع</AlertDialogCancel>
+            <AlertDialogAction onClick={submitAssignment}>تأكيد الإلغاء</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

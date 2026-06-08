@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -46,6 +46,8 @@ function CustomersPage() {
   const { data: attachments = [] } = useQuery({ queryKey: ["customers-attachments"], queryFn: () => attachmentsFn() });
 
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
@@ -63,6 +65,20 @@ function CustomersPage() {
     const q = search.toLowerCase();
     return customers.filter((c) => `${c.name} ${c.phone} ${c.governorate ?? ""} ${c.city ?? ""}`.toLowerCase().includes(q));
   }, [customers, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginatedCustomers = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const selectedCustomer = customers.find((item) => item.id === selectedCustomerId) ?? filtered[0] ?? null;
   const customerSystems = systems.filter((item) => item.customer_id === selectedCustomer?.id);
@@ -120,12 +136,12 @@ function CustomersPage() {
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">جاري التحميل...</TableCell>
                 </TableRow>
-              ) : filtered.length === 0 ? (
+              ) : paginatedCustomers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">لا توجد بيانات.</TableCell>
                 </TableRow>
               ) : (
-                filtered.map((item) => (
+                paginatedCustomers.map((item) => (
                   <TableRow key={item.id} onClick={() => setSelectedCustomerId(item.id)} className="cursor-pointer">
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.phone}</TableCell>
@@ -160,6 +176,14 @@ function CustomersPage() {
               )}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">صفحة {page} من {totalPages}</p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>السابق</Button>
+            <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>التالي</Button>
+          </div>
         </div>
 
         {selectedCustomer && (

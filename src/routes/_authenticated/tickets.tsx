@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -54,6 +54,10 @@ function TicketsPage() {
   const [open, setOpen] = useState(false);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+  const [tableSearch, setTableSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
   const [quickCustomer, setQuickCustomer] = useState({ name: "", phone: "", governorate: "", city: "", address: "" });
   const [closeFeedback, setCloseFeedback] = useState({ rating: "success", notes: "" });
   const [form, setForm] = useState({
@@ -96,6 +100,37 @@ function TicketsPage() {
     const q = customerSearch.toLowerCase();
     return (refs?.customers ?? []).filter((item) => `${item.name} ${item.phone}`.toLowerCase().includes(q));
   }, [refs?.customers, customerSearch]);
+
+  const filteredTickets = useMemo(() => {
+    return tickets.filter((ticket) => {
+      if (statusFilter !== "all" && ticket.status !== statusFilter) return false;
+      const customerName = refs?.customers.find((c) => c.id === ticket.customer_id)?.name ?? "";
+      const bucket = `${ticket.description} ${ticket.error_code_text ?? ""} ${customerName}`.toLowerCase();
+      return bucket.includes(tableSearch.toLowerCase());
+    });
+  }, [tickets, statusFilter, tableSearch, refs?.customers]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
+  const paginatedTickets = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredTickets.slice(start, start + pageSize);
+  }, [filteredTickets, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tableSearch, statusFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const statusBadge = (status: string) => {
+    if (status === "closed") return <Badge>مغلقة</Badge>;
+    if (status === "resolved_remote") return <Badge variant="secondary">حُلّت عن بُعد</Badge>;
+    if (status === "in_progress") return <Badge variant="outline">قيد التنفيذ</Badge>;
+    if (status === "assigned_field") return <Badge variant="secondary">مُحالة للميدان</Badge>;
+    return <Badge variant="outline">جديدة</Badge>;
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -216,21 +251,46 @@ function TicketsPage() {
   return (
     <AppShell roles={roles} title="التذاكر وحالات الدعم">
       <div className="space-y-4">
-        {canManage && <Button onClick={() => setOpen(true)}>إضافة تذكرة</Button>}
+        <div className="flex flex-col gap-2 rounded-lg border bg-card p-3 md:flex-row md:items-center">
+          {canManage && <Button onClick={() => setOpen(true)}>إضافة تذكرة</Button>}
+          <Input value={tableSearch} onChange={(e) => setTableSearch(e.target.value)} placeholder="بحث بالوصف/العميل/كود الخطأ" className="md:max-w-sm" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="md:max-w-[220px]"><SelectValue placeholder="فلترة الحالة" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل الحالات</SelectItem>
+              <SelectItem value="new">جديدة</SelectItem>
+              <SelectItem value="in_progress">قيد التنفيذ</SelectItem>
+              <SelectItem value="resolved_remote">حُلّت عن بُعد</SelectItem>
+              <SelectItem value="assigned_field">مُحالة للميدان</SelectItem>
+              <SelectItem value="closed">مغلقة</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="rounded-lg border bg-card">
           <Table>
             <TableHeader><TableRow><TableHead>العميل</TableHead><TableHead>النوع</TableHead><TableHead>الحالة</TableHead><TableHead>الأولوية</TableHead><TableHead>الوصف</TableHead>{canManage && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
             <TableBody>
-              {tickets.map((t) => (
+              {paginatedTickets.length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">لا توجد تذاكر مطابقة حاليًا.</TableCell></TableRow>
+              ) : paginatedTickets.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell>{refs?.customers.find((c) => c.id === t.customer_id)?.name ?? "—"}</TableCell>
-                  <TableCell>{t.ticket_type}</TableCell><TableCell>{t.status}</TableCell><TableCell>{t.priority}</TableCell>
+                  <TableCell>{t.ticket_type}</TableCell><TableCell>{statusBadge(t.status)}</TableCell><TableCell>{t.priority}</TableCell>
                   <TableCell className="max-w-[420px] truncate">{t.description}</TableCell>
                   {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">صفحة {page} من {totalPages}</p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>السابق</Button>
+            <Button type="button" variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>التالي</Button>
+          </div>
         </div>
       </div>
 
