@@ -617,6 +617,18 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const listKnowledgeFeedback = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("knowledge_feedback")
+      .select("id, knowledge_base_id, ticket_id, engineer_id, rating, notes, created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(`تعذر تحميل تقييمات قاعدة المعرفة: ${error.message}`);
+    return data ?? [];
+  });
+
 export const listNotifications = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
