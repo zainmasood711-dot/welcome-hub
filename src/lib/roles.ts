@@ -88,8 +88,7 @@ export const rolePermissions: Record<AppRole, AppPermission[]> = {
   ],
   manager: [
     "dashboard.read",
-    "reports.management.read",
-    "notifications.read"
+    "reports.management.read"
   ],
 };
 
