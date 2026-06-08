@@ -178,7 +178,7 @@ const assignmentCreateFromSourceSchema = z.object({
 
 const assignmentFieldReportWorkflowSchema = z.object({
   assignment_id: z.string().uuid(),
-  status: z.enum(["in_progress", "completed", "cancelled"]),
+  status: z.enum(["pending", "in_progress", "completed", "cancelled"]),
   work_done: z.string().trim().max(4000).optional().nullable(),
   difficulties: z.string().trim().max(4000).optional().nullable(),
   recommendations: z.string().trim().max(4000).optional().nullable(),
