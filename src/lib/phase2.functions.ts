@@ -618,6 +618,14 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
       .limit(120);
     if (error) throw new Error(`تعذر البحث في قاعدة المعرفة: ${error.message}`);
 
+    const kbProductIds = Array.from(new Set((rows ?? []).map((row) => row.product_id).filter((id): id is string => !!id)));
+    const kbProductsRes = kbProductIds.length
+      ? await supabase.from("products").select("id, category_id").in("id", kbProductIds)
+      : { data: [], error: null };
+    if (kbProductsRes.error) throw new Error(`تعذر تحميل تصنيفات منتجات قاعدة المعرفة: ${kbProductsRes.error.message}`);
+
+    const kbProductCategoryMap = new Map((kbProductsRes.data ?? []).map((row) => [row.id, row.category_id]));
+
     const ranked = (rows ?? [])
       .map((item) => {
         const sameProduct = !!data.affected_product_id && item.product_id === data.affected_product_id;
@@ -625,10 +633,7 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
           (!!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode) ||
           (!!selectedErrorCode?.code && normalizeText(item.error_code_text) === normalizeText(selectedErrorCode.code));
 
-        let itemCategoryId: string | null = null;
-        if (item.product_id) {
-          itemCategoryId = productRefRes.data?.id === item.product_id ? (productRefRes.data?.category_id ?? null) : null;
-        }
+        const itemCategoryId = item.product_id ? (kbProductCategoryMap.get(item.product_id) ?? null) : null;
 
         const sameCategory = !!selectedCategoryId && !!itemCategoryId && itemCategoryId === selectedCategoryId;
 
