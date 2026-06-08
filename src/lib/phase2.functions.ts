@@ -134,6 +134,8 @@ const readNotificationSchema = z.object({
 
 const knowledgeSearchSchema = z.object({
   affected_product_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
   error_code_text: z.string().trim().max(80).optional().nullable(),
   issue_description: z.string().trim().max(2500).optional().nullable(),
   limit: z.number().int().min(1).max(10).default(5),
@@ -593,6 +595,21 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
     const normalizedErrorCode = normalizeText(data.error_code_text);
     const descriptionKeywords = extractImportantWords(data.issue_description);
 
+    const [errorCodeRefRes, productRefRes] = await Promise.all([
+      data.error_code_id
+        ? supabase.from("error_codes").select("id, code, category, product_id").eq("id", data.error_code_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      data.affected_product_id
+        ? supabase.from("products").select("id, category_id").eq("id", data.affected_product_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    if (errorCodeRefRes.error) throw new Error(`تعذر تحميل كود العطل المرجعي: ${errorCodeRefRes.error.message}`);
+    if (productRefRes.error) throw new Error(`تعذر تحميل المنتج المرجعي: ${productRefRes.error.message}`);
+
+    const selectedErrorCode = errorCodeRefRes.data;
+    const selectedCategoryId = data.category_id ?? productRefRes.data?.category_id ?? null;
+
     const { data: rows, error } = await supabase
       .from("knowledge_base")
       .select("id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, effectiveness_rate, success_count, fail_count")
@@ -601,10 +618,24 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
       .limit(120);
     if (error) throw new Error(`تعذر البحث في قاعدة المعرفة: ${error.message}`);
 
+    const kbProductIds = Array.from(new Set((rows ?? []).map((row) => row.product_id).filter((id): id is string => !!id)));
+    const kbProductsRes = kbProductIds.length
+      ? await supabase.from("products").select("id, category_id").in("id", kbProductIds)
+      : { data: [], error: null };
+    if (kbProductsRes.error) throw new Error(`تعذر تحميل تصنيفات منتجات قاعدة المعرفة: ${kbProductsRes.error.message}`);
+
+    const kbProductCategoryMap = new Map((kbProductsRes.data ?? []).map((row) => [row.id, row.category_id]));
+
     const ranked = (rows ?? [])
       .map((item) => {
         const sameProduct = !!data.affected_product_id && item.product_id === data.affected_product_id;
-        const sameError = !!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode;
+        const sameError =
+          (!!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode) ||
+          (!!selectedErrorCode?.code && normalizeText(item.error_code_text) === normalizeText(selectedErrorCode.code));
+
+        const itemCategoryId = item.product_id ? (kbProductCategoryMap.get(item.product_id) ?? null) : null;
+
+        const sameCategory = !!selectedCategoryId && !!itemCategoryId && itemCategoryId === selectedCategoryId;
 
         let priorityTier: 1 | 2 | 3 | 4 | null = null;
         if (sameError && sameProduct) {
@@ -622,7 +653,15 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
         }
 
         if (priorityTier === null) return null;
-        return { ...item, priority_tier: priorityTier, keyword_hits: keywordHits };
+
+        const reasons: string[] = [];
+        if (sameError) reasons.push("نفس كود العطل المرتبط بالتذكرة");
+        if (sameCategory) reasons.push("نفس التصنيف المرتبط بالتذكرة");
+        if (sameProduct) reasons.push("نفس المنتج/الموديل");
+        if (priorityTier === 4 && keywordHits > 0) reasons.push(`تطابق كلمات وصف المشكلة (${keywordHits})`);
+
+        const matchReason = reasons.length > 0 ? reasons.join(" + ") : "تطابق عام في قاعدة المعرفة";
+        return { ...item, priority_tier: priorityTier, keyword_hits: keywordHits, match_reason: matchReason };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
       .sort((a, b) => {
