@@ -693,18 +693,20 @@ export const getOperationsReport = createServerFn({ method: "GET" })
 
     if (roles.includes("manager")) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const [ticketsRes, assignmentsRes, engineersRes] = await Promise.all([
-        supabaseAdmin.from("tickets").select("id, status, priority, error_code_text, created_at"),
+      const [ticketsRes, assignmentsRes, engineersRes, productsRes] = await Promise.all([
+        supabaseAdmin.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
         supabaseAdmin.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
         supabaseAdmin.from("engineers").select("id, name"),
+        supabaseAdmin.from("products").select("id, model"),
       ]);
 
-      const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error].filter(Boolean);
+      const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error].filter(Boolean);
       if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
       const tickets = ticketsRes.data ?? [];
       const assignments = assignmentsRes.data ?? [];
       const engineers = engineersRes.data ?? [];
+      const products = productsRes.data ?? [];
 
       const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
       const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
@@ -730,6 +732,27 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         };
       });
 
+      const monthlyMap = new Map<string, { month: string; newTickets: number; closedTickets: number; completedAssignments: number }>();
+      for (const ticket of tickets) {
+        const month = new Date(ticket.created_at).toISOString().slice(0, 7);
+        const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+        current.newTickets += 1;
+        if (ticket.status === "closed") current.closedTickets += 1;
+        monthlyMap.set(month, current);
+      }
+      for (const assignment of assignments) {
+        const month = new Date(assignment.created_at).toISOString().slice(0, 7);
+        const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+        if (assignment.status === "completed") current.completedAssignments += 1;
+        monthlyMap.set(month, current);
+      }
+
+      const productReliability = products.map((product) => {
+        const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
+        const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
+        return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
+      }).filter((item) => item.totalIssues > 0).sort((a, b) => b.totalIssues - a.totalIssues).slice(0, 10);
+
       return {
         unresolved,
         delayed,
@@ -737,21 +760,25 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         totalAssignments: assignments.length,
         recurringProblems,
         engineerPerformance,
+        monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
+        productReliability,
       };
     }
 
-    const [ticketsRes, assignmentsRes, engineersRes] = await Promise.all([
-      supabase.from("tickets").select("id, status, priority, error_code_text, created_at"),
+    const [ticketsRes, assignmentsRes, engineersRes, productsRes] = await Promise.all([
+      supabase.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
       supabase.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
       supabase.from("engineers").select("id, name"),
+      supabase.from("products").select("id, model"),
     ]);
 
-    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error].filter(Boolean);
+    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
     const tickets = ticketsRes.data ?? [];
     const assignments = assignmentsRes.data ?? [];
     const engineers = engineersRes.data ?? [];
+    const products = productsRes.data ?? [];
 
     const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
     const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
@@ -777,6 +804,27 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       };
     });
 
+    const monthlyMap = new Map<string, { month: string; newTickets: number; closedTickets: number; completedAssignments: number }>();
+    for (const ticket of tickets) {
+      const month = new Date(ticket.created_at).toISOString().slice(0, 7);
+      const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+      current.newTickets += 1;
+      if (ticket.status === "closed") current.closedTickets += 1;
+      monthlyMap.set(month, current);
+    }
+    for (const assignment of assignments) {
+      const month = new Date(assignment.created_at).toISOString().slice(0, 7);
+      const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+      if (assignment.status === "completed") current.completedAssignments += 1;
+      monthlyMap.set(month, current);
+    }
+
+    const productReliability = products.map((product) => {
+      const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
+      const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
+      return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
+    }).filter((item) => item.totalIssues > 0).sort((a, b) => b.totalIssues - a.totalIssues).slice(0, 10);
+
     return {
       unresolved,
       delayed,
@@ -784,5 +832,7 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       totalAssignments: assignments.length,
       recurringProblems,
       engineerPerformance,
+      monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
+      productReliability,
     };
   });
