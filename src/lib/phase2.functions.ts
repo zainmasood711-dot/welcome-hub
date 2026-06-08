@@ -142,9 +142,11 @@ const createKnowledgeFromTicketSchema = z.object({
   title: z.string().trim().min(3).max(200).optional().nullable(),
 });
 
-const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
-const documentExtensions = new Set(["pdf", "doc", "docx", "xls", "xlsx", "csv", "txt"]);
-const batteryExtensions = new Set(["csv", "xlsx", "txt", "bin"]);
+const imageExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
+const documentExtensions = new Set(["pdf", "xls", "xlsx", "csv", "txt"]);
+const batteryExtensions = new Set(["log", "csv", "txt"]);
+const maxImageBytes = 5 * 1024 * 1024;
+const maxFileBytes = 20 * 1024 * 1024;
 const keywordStopWords = new Set([
   "the",
   "and",
@@ -192,8 +194,14 @@ function validateAttachmentInput(data: z.infer<typeof attachmentSchema>) {
     throw new Error("نوع الملف لا يتوافق مع مرفق البطارية");
   }
 
-  if (data.file_size != null && data.file_size > 20_971_520) {
-    throw new Error("حجم الملف يتجاوز الحد المسموح 20MB");
+  if (data.file_size != null) {
+    if (data.file_type === "image" && data.file_size > maxImageBytes) {
+      throw new Error("حجم الصورة يتجاوز الحد المسموح 5MB");
+    }
+
+    if (data.file_size > maxFileBytes) {
+      throw new Error("حجم الملف يتجاوز الحد المسموح 20MB");
+    }
   }
 }
 
