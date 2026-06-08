@@ -416,6 +416,13 @@ export const saveTicket = createServerFn({ method: "POST" })
     await assertSupportRole(supabase, userId);
 
     if (data.id) {
+      const { data: existingTicket, error: existingTicketError } = await supabase
+        .from("tickets")
+        .select("id, status, knowledge_base_id")
+        .eq("id", data.id)
+        .single();
+      if (existingTicketError) throw new Error(`تعذر التحقق من حالة التذكرة: ${existingTicketError.message}`);
+
       const { error } = await supabase
         .from("tickets")
         .update({
@@ -435,6 +442,49 @@ export const saveTicket = createServerFn({ method: "POST" })
         })
         .eq("id", data.id);
       if (error) throw new Error(`تعذر تعديل التذكرة: ${error.message}`);
+
+      const rating = data.knowledge_feedback_rating;
+      const shouldApplyKnowledgeOutcome =
+        existingTicket.status !== "closed" &&
+        data.status === "closed" &&
+        !!data.knowledge_base_id &&
+        (rating === "success" || rating === "failure");
+
+      if (shouldApplyKnowledgeOutcome) {
+        const { data: kbRow, error: kbReadError } = await supabase
+          .from("knowledge_base")
+          .select("id, success_count, fail_count")
+          .eq("id", data.knowledge_base_id as string)
+          .single();
+        if (kbReadError) throw new Error(`تعذر تحديث إحصائيات المادة المعرفية: ${kbReadError.message}`);
+
+        const nextSuccess = kbRow.success_count + (rating === "success" ? 1 : 0);
+        const nextFail = kbRow.fail_count + (rating === "failure" ? 1 : 0);
+        const nextEffectiveness = calculateEffectivenessRate(nextSuccess, nextFail);
+
+        const { error: kbUpdateError } = await supabase
+          .from("knowledge_base")
+          .update({
+            success_count: nextSuccess,
+            fail_count: nextFail,
+            effectiveness_rate: nextEffectiveness,
+          })
+          .eq("id", kbRow.id);
+        if (kbUpdateError) throw new Error(`تعذر حفظ تقييم نجاح الحل: ${kbUpdateError.message}`);
+
+        const { data: currentProfile } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
+        if (currentProfile?.engineer_id) {
+          const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
+            knowledge_base_id: data.knowledge_base_id,
+            ticket_id: data.id,
+            engineer_id: currentProfile.engineer_id,
+            rating,
+            notes: data.knowledge_feedback_notes ?? null,
+          });
+          if (feedbackError) throw new Error(`تعذر تسجيل تقييم الحل: ${feedbackError.message}`);
+        }
+      }
+
       return { ok: true };
     }
 
@@ -460,6 +510,145 @@ export const saveTicket = createServerFn({ method: "POST" })
       .single();
     if (error) throw new Error(`تعذر إنشاء التذكرة: ${error.message}`);
     return { ok: true, id: created.id };
+  });
+
+export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => knowledgeSearchSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+    const normalizedErrorCode = normalizeText(data.error_code_text);
+    const descriptionKeywords = extractImportantWords(data.issue_description);
+
+    const { data: rows, error } = await supabase
+      .from("knowledge_base")
+      .select("id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, effectiveness_rate, success_count, fail_count")
+      .order("effectiveness_rate", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(120);
+    if (error) throw new Error(`تعذر البحث في قاعدة المعرفة: ${error.message}`);
+
+    const ranked = (rows ?? [])
+      .map((item) => {
+        const sameProduct = !!data.affected_product_id && item.product_id === data.affected_product_id;
+        const sameError = !!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode;
+
+        let priorityTier: 1 | 2 | 3 | 4 | null = null;
+        if (sameError && sameProduct) {
+          priorityTier = 1;
+        } else if (sameError) {
+          priorityTier = 2;
+        } else if (sameProduct) {
+          priorityTier = 3;
+        }
+
+        const searchable = `${item.title} ${item.issue_description} ${item.search_keywords ?? ""}`.toLowerCase();
+        const keywordHits = descriptionKeywords.filter((word) => searchable.includes(word)).length;
+        if (priorityTier === null && keywordHits > 0) {
+          priorityTier = 4;
+        }
+
+        if (priorityTier === null) return null;
+        return { ...item, priority_tier: priorityTier, keyword_hits: keywordHits };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .sort((a, b) => {
+        if (a.priority_tier !== b.priority_tier) return a.priority_tier - b.priority_tier;
+        if (a.keyword_hits !== b.keyword_hits) return b.keyword_hits - a.keyword_hits;
+        if (a.effectiveness_rate !== b.effectiveness_rate) return b.effectiveness_rate - a.effectiveness_rate;
+        return (b.success_count + b.fail_count) - (a.success_count + a.fail_count);
+      })
+      .slice(0, data.limit);
+
+    return ranked;
+  });
+
+export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => createKnowledgeFromTicketSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    const { data: ticket, error: ticketError } = await supabase
+      .from("tickets")
+      .select("id, description, affected_product_id, error_code_text, remote_solution_notes, knowledge_base_id")
+      .eq("id", data.ticket_id)
+      .single();
+    if (ticketError) throw new Error(`تعذر تحميل التذكرة: ${ticketError.message}`);
+
+    const solutionNotes = ticket.remote_solution_notes?.trim() ?? "";
+    if (solutionNotes.length < 10) {
+      throw new Error("أضف ملاحظات حل واضحة في التذكرة قبل تحويلها لمادة معرفية");
+    }
+
+    const { data: existingArticles, error: existingError } = await supabase
+      .from("knowledge_base")
+      .select("id")
+      .or(
+        `and(product_id.eq.${ticket.affected_product_id ?? "00000000-0000-0000-0000-000000000000"},error_code_text.eq.${(ticket.error_code_text ?? "").replace(/,/g, "")}),solution_steps.eq.${solutionNotes.replace(/,/g, " ")}`,
+      )
+      .limit(1);
+    if (existingError) throw new Error(`تعذر التحقق من تكرار المادة: ${existingError.message}`);
+
+    if ((existingArticles ?? []).length > 0) {
+      return { created: false, existingArticleId: existingArticles?.[0]?.id ?? null };
+    }
+
+    const keywordSet = new Set<string>(extractImportantWords(ticket.description));
+    const normalizedError = normalizeText(ticket.error_code_text);
+    if (normalizedError) keywordSet.add(normalizedError);
+
+    if (ticket.affected_product_id) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("id, model, brand_id")
+        .eq("id", ticket.affected_product_id)
+        .maybeSingle();
+
+      if (product?.model) {
+        extractImportantWords(product.model).forEach((word) => keywordSet.add(word));
+      }
+
+      if (product?.brand_id) {
+        const { data: brand } = await supabase.from("brands").select("name_ar").eq("id", product.brand_id).maybeSingle();
+        if (brand?.name_ar) {
+          extractImportantWords(brand.name_ar).forEach((word) => keywordSet.add(word));
+        }
+      }
+    }
+
+    const title =
+      data.title?.trim() ||
+      `حل ${ticket.error_code_text?.trim() || "عطل متكرر"}${ticket.affected_product_id ? " للمنتج المحدد" : ""}`;
+
+    const { data: createdArticle, error: createError } = await supabase
+      .from("knowledge_base")
+      .insert({
+        title,
+        issue_description: ticket.description,
+        solution_steps: solutionNotes,
+        product_id: ticket.affected_product_id ?? null,
+        error_code_text: ticket.error_code_text ?? null,
+        search_keywords: Array.from(keywordSet).join(", "),
+        source: "auto_from_ticket",
+        linked_ticket_ids: [ticket.id],
+        success_count: 0,
+        fail_count: 0,
+        effectiveness_rate: 0,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (createError) throw new Error(`تعذر إنشاء المادة المعرفية من التذكرة: ${createError.message}`);
+
+    const { error: linkError } = await supabase
+      .from("tickets")
+      .update({ knowledge_base_id: createdArticle.id })
+      .eq("id", ticket.id);
+    if (linkError) throw new Error(`تم إنشاء المادة لكن تعذر ربطها بالتذكرة: ${linkError.message}`);
+
+    return { created: true, articleId: createdArticle.id };
   });
 
 export const listAssignments = createServerFn({ method: "GET" })
