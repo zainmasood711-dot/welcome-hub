@@ -39,10 +39,10 @@ function TicketsPage() {
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [engineerNeededFilter, setEngineerNeededFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed">("all");
+  const [typeFilter, setTypeFilter] = useState<"all" | "fault" | "inquiry" | "preventive_maintenance" | "new_installation">("all");
+  const [priorityFilter, setPriorityFilter] = useState<"all" | "low" | "medium" | "high" | "critical">("all");
+  const [engineerNeededFilter, setEngineerNeededFilter] = useState<"all" | "yes" | "no">("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
@@ -50,7 +50,7 @@ function TicketsPage() {
   const [quickCustomerEnabled, setQuickCustomerEnabled] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState({ name: "", phone: "", governorate: "", city: "", address: "" });
 
-  const [attachmentDraft, setAttachmentDraft] = useState({ file_type: "document", file_path: "", original_name: "", file_size: "" });
+  const [attachmentDraft, setAttachmentDraft] = useState<{ file_type: "image" | "battery_file" | "document"; file_path: string; original_name: string; file_size: string }>({ file_type: "document", file_path: "", original_name: "", file_size: "" });
   const [attachments, setAttachments] = useState<Array<{ file_type: "image" | "battery_file" | "document"; file_path: string; original_name: string | null; file_size: number | null }>>([]);
 
   const [form, setForm] = useState({
