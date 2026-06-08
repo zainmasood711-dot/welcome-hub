@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -115,6 +115,14 @@ function TicketsPage() {
     const start = (page - 1) * pageSize;
     return filteredTickets.slice(start, start + pageSize);
   }, [filteredTickets, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [tableSearch, statusFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const statusBadge = (status: string) => {
     if (status === "closed") return <Badge>مغلقة</Badge>;
