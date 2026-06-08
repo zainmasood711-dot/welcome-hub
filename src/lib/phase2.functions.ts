@@ -595,6 +595,21 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
     const normalizedErrorCode = normalizeText(data.error_code_text);
     const descriptionKeywords = extractImportantWords(data.issue_description);
 
+    const [errorCodeRefRes, productRefRes] = await Promise.all([
+      data.error_code_id
+        ? supabase.from("error_codes").select("id, code, category, product_id").eq("id", data.error_code_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      data.affected_product_id
+        ? supabase.from("products").select("id, category_id").eq("id", data.affected_product_id).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    if (errorCodeRefRes.error) throw new Error(`تعذر تحميل كود العطل المرجعي: ${errorCodeRefRes.error.message}`);
+    if (productRefRes.error) throw new Error(`تعذر تحميل المنتج المرجعي: ${productRefRes.error.message}`);
+
+    const selectedErrorCode = errorCodeRefRes.data;
+    const selectedCategoryId = data.category_id ?? productRefRes.data?.category_id ?? null;
+
     const { data: rows, error } = await supabase
       .from("knowledge_base")
       .select("id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, effectiveness_rate, success_count, fail_count")
@@ -606,7 +621,16 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
     const ranked = (rows ?? [])
       .map((item) => {
         const sameProduct = !!data.affected_product_id && item.product_id === data.affected_product_id;
-        const sameError = !!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode;
+        const sameError =
+          (!!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode) ||
+          (!!selectedErrorCode?.code && normalizeText(item.error_code_text) === normalizeText(selectedErrorCode.code));
+
+        let itemCategoryId: string | null = null;
+        if (item.product_id) {
+          itemCategoryId = productRefRes.data?.id === item.product_id ? (productRefRes.data?.category_id ?? null) : null;
+        }
+
+        const sameCategory = !!selectedCategoryId && !!itemCategoryId && itemCategoryId === selectedCategoryId;
 
         let priorityTier: 1 | 2 | 3 | 4 | null = null;
         if (sameError && sameProduct) {
@@ -624,7 +648,15 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
         }
 
         if (priorityTier === null) return null;
-        return { ...item, priority_tier: priorityTier, keyword_hits: keywordHits };
+
+        const reasons: string[] = [];
+        if (sameError) reasons.push("نفس كود العطل المرتبط بالتذكرة");
+        if (sameCategory) reasons.push("نفس التصنيف المرتبط بالتذكرة");
+        if (sameProduct) reasons.push("نفس المنتج/الموديل");
+        if (priorityTier === 4 && keywordHits > 0) reasons.push(`تطابق كلمات وصف المشكلة (${keywordHits})`);
+
+        const matchReason = reasons.length > 0 ? reasons.join(" + ") : "تطابق عام في قاعدة المعرفة";
+        return { ...item, priority_tier: priorityTier, keyword_hits: keywordHits, match_reason: matchReason };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
       .sort((a, b) => {
