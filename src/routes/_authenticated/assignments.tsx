@@ -26,7 +26,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { createAssignmentFromSource, getPhase2References, listAssignments, saveAssignment, submitAssignmentReport } from "@/lib/phase2.functions";
+import { createAssignmentFromSource, getPhase2References, listAssignments, saveAssignment, saveKnowledgeFeedbackFromContext, submitAssignmentReport } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/assignments")({
@@ -43,6 +43,7 @@ function AssignmentsPage() {
   const createFromSourceFn = useServerFn(createAssignmentFromSource);
   const saveFn = useServerFn(saveAssignment);
   const submitFn = useServerFn(submitAssignmentReport);
+  const saveKnowledgeFeedbackContextFn = useServerFn(saveKnowledgeFeedbackFromContext);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
 
@@ -62,6 +63,11 @@ function AssignmentsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackAssignmentId, setFeedbackAssignmentId] = useState("");
+  const [feedbackArticleId, setFeedbackArticleId] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState("success");
+  const [feedbackNotes, setFeedbackNotes] = useState("");
   const pageSize = 10;
   const [sourceType, setSourceType] = useState<"ticket" | "system">("ticket");
   const [form, setForm] = useState({ id: "", ticket_id: "", customer_system_id: "", engineer_id: "", assignment_type: "repair_visit", scheduled_date: "", status: "pending", work_done: "", difficulties: "", recommendations: "" });
@@ -156,6 +162,33 @@ function AssignmentsPage() {
     await submitAssignment();
   };
 
+  const submitKnowledgeFeedback = async () => {
+    if (!feedbackAssignmentId || !feedbackArticleId) {
+      toast.error("اختر المهمة والمادة المعرفية أولاً");
+      return;
+    }
+    try {
+      await saveKnowledgeFeedbackContextFn({
+        data: {
+          knowledge_base_id: feedbackArticleId,
+          rating: feedbackRating as "success" | "failure" | "partial",
+          notes: feedbackNotes || null,
+          ticket_id: null,
+          assignment_id: feedbackAssignmentId,
+        },
+      });
+      toast.success("تم تسجيل التقييم من المهمة وتحديث فاعلية المادة");
+      setFeedbackOpen(false);
+      setFeedbackAssignmentId("");
+      setFeedbackArticleId("");
+      setFeedbackRating("success");
+      setFeedbackNotes("");
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base"] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر حفظ تقييم المعرفة");
+    }
+  };
+
   const statusBadge = (status: string) => {
     if (status === "completed") return <Badge>مكتملة</Badge>;
     if (status === "in_progress") return <Badge variant="secondary">قيد التنفيذ</Badge>;
@@ -198,7 +231,7 @@ function AssignmentsPage() {
 
         <div className="hidden rounded-lg border bg-card md:block">
           <Table>
-            <TableHeader><TableRow><TableHead>النوع</TableHead><TableHead>المهندس</TableHead><TableHead>الحالة</TableHead><TableHead>موعد التنفيذ</TableHead>{(canManage || canSubmit) && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
+             <TableHeader><TableRow><TableHead>النوع</TableHead><TableHead>المهندس</TableHead><TableHead>الحالة</TableHead><TableHead>موعد التنفيذ</TableHead>{(canManage || canSubmit) && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
             <TableBody>
               {paginatedAssignments.length === 0 ? (
                 <TableRow><TableCell colSpan={5} className="py-8 text-center text-muted-foreground">لا توجد مهام مطابقة للبحث الحالي.</TableCell></TableRow>
@@ -208,7 +241,7 @@ function AssignmentsPage() {
                   <TableCell>{refs?.engineers.find((e) => e.id === a.engineer_id)?.name ?? "—"}</TableCell>
                   <TableCell>{statusBadge(a.status)}</TableCell>
                   <TableCell>{a.scheduled_date ? new Date(a.scheduled_date).toLocaleString("ar-EG") : "—"}</TableCell>
-                   {(canManage || canSubmit) && <TableCell className="text-left"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => { setSourceType(a.ticket_id ? "ticket" : "system"); setForm({ id: a.id, ticket_id: a.ticket_id ?? "", customer_system_id: a.customer_system_id ?? "", engineer_id: a.engineer_id, assignment_type: a.assignment_type, scheduled_date: a.scheduled_date ? a.scheduled_date.slice(0, 16) : "", status: a.status, work_done: a.work_done ?? "", difficulties: a.difficulties ?? "", recommendations: a.recommendations ?? "" }); setOpen(true); }}>تحديث</Button><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/assignments/$assignmentId" params={{ assignmentId: a.id }}>تفاصيل</Link></Button></div></TableCell>}
+                   {(canManage || canSubmit) && <TableCell className="text-left"><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => { setSourceType(a.ticket_id ? "ticket" : "system"); setForm({ id: a.id, ticket_id: a.ticket_id ?? "", customer_system_id: a.customer_system_id ?? "", engineer_id: a.engineer_id, assignment_type: a.assignment_type, scheduled_date: a.scheduled_date ? a.scheduled_date.slice(0, 16) : "", status: a.status, work_done: a.work_done ?? "", difficulties: a.difficulties ?? "", recommendations: a.recommendations ?? "" }); setOpen(true); }}>تحديث</Button><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/assignments/$assignmentId" params={{ assignmentId: a.id }}>تفاصيل</Link></Button><Button size="sm" variant="outline" onClick={() => { setFeedbackAssignmentId(a.id); setFeedbackArticleId(""); setFeedbackRating("success"); setFeedbackNotes(""); setFeedbackOpen(true); }}>تقييم معرفة</Button></div></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
@@ -287,6 +320,18 @@ function AssignmentsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="max-w-xl" dir="rtl">
+          <DialogHeader><DialogTitle>تقييم مادة معرفية من المهمة</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2"><Label>المادة المعرفية</Label><Select value={feedbackArticleId || "none"} onValueChange={(v) => setFeedbackArticleId(v === "none" ? "" : v)}><SelectTrigger><SelectValue placeholder="اختر مادة" /></SelectTrigger><SelectContent><SelectItem value="none">اختر مادة</SelectItem>{(refs?.knowledge ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>نتيجة الحل</Label><Select value={feedbackRating} onValueChange={setFeedbackRating}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="success">ناجح</SelectItem><SelectItem value="partial">جزئي</SelectItem><SelectItem value="failure">فاشل</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label>ملاحظات</Label><Textarea value={feedbackNotes} onChange={(e) => setFeedbackNotes(e.target.value)} placeholder="ملاحظات إضافية" /></div>
+            <div className="flex justify-start gap-2"><Button type="button" onClick={submitKnowledgeFeedback}>حفظ التقييم</Button><Button type="button" variant="outline" onClick={() => setFeedbackOpen(false)}>إلغاء</Button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

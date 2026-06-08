@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { createTicketWorkflow, getKnowledgeSuggestions, getPhase2References, listTickets } from "@/lib/phase2.functions";
+import { createTicketWorkflow, getKnowledgeSuggestions, getPhase2References, listTickets, saveKnowledgeFeedbackFromContext } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/tickets")({
@@ -33,6 +33,7 @@ function TicketsPage() {
   const listFn = useServerFn(listTickets);
   const createWorkflowFn = useServerFn(createTicketWorkflow);
   const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
+  const saveKnowledgeFeedbackContextFn = useServerFn(saveKnowledgeFeedbackFromContext);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
   const canManage = hasAnyPermission(roles, ["tickets.manage"]);
@@ -45,6 +46,11 @@ function TicketsPage() {
   const [engineerNeededFilter, setEngineerNeededFilter] = useState<"all" | "yes" | "no">("all");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackTicketId, setFeedbackTicketId] = useState("");
+  const [feedbackArticleId, setFeedbackArticleId] = useState("");
+  const [feedbackRating, setFeedbackRating] = useState("success");
+  const [feedbackNotes, setFeedbackNotes] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
 
   const [quickCustomerEnabled, setQuickCustomerEnabled] = useState(false);
@@ -267,6 +273,34 @@ function TicketsPage() {
     }
   };
 
+  const submitKnowledgeFeedback = async () => {
+    if (!feedbackTicketId || !feedbackArticleId) {
+      toast.error("اختر التذكرة والمادة المعرفية أولاً");
+      return;
+    }
+    try {
+      await saveKnowledgeFeedbackContextFn({
+        data: {
+          knowledge_base_id: feedbackArticleId,
+          rating: feedbackRating as "success" | "failure" | "partial",
+          notes: feedbackNotes || null,
+          ticket_id: feedbackTicketId,
+          assignment_id: null,
+        },
+      });
+      toast.success("تم تسجيل تقييم المعرفة للتذكرة وتحديث الفاعلية");
+      setFeedbackOpen(false);
+      setFeedbackTicketId("");
+      setFeedbackArticleId("");
+      setFeedbackRating("success");
+      setFeedbackNotes("");
+      queryClient.invalidateQueries({ queryKey: ["knowledge-base"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر حفظ تقييم المعرفة");
+    }
+  };
+
   return (
     <AppShell roles={roles} title="إدارة التذاكر">
       <div className="space-y-4" dir="rtl">
@@ -299,11 +333,12 @@ function TicketsPage() {
                 <TableHead>الأولوية</TableHead>
                 <TableHead>المنتج/الكود</TableHead>
                 <TableHead>التاريخ</TableHead>
+                <TableHead className="text-left">إجراء</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tickets.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة.</TableCell></TableRow>
               ) : (
                 tickets.map((ticket) => {
                   const customer = refs?.customers.find((item) => item.id === ticket.customer_id)?.name ?? "—";
@@ -318,6 +353,7 @@ function TicketsPage() {
                       <TableCell>{priorityBadge(ticket.priority)}</TableCell>
                       <TableCell>{product} / {ticket.error_code_text ?? "—"}</TableCell>
                       <TableCell>{new Date(ticket.created_at).toLocaleDateString("ar-EG")}</TableCell>
+                      <TableCell className="text-left"><Button size="sm" variant="outline" onClick={() => { setFeedbackTicketId(ticket.id); setFeedbackArticleId(ticket.knowledge_base_id ?? ""); setFeedbackRating("success"); setFeedbackNotes(""); setFeedbackOpen(true); }}>تقييم المعرفة</Button></TableCell>
                     </TableRow>
                   );
                 })
@@ -498,6 +534,18 @@ function TicketsPage() {
               <Button type="button" variant="outline" onClick={() => { setOpen(false); resetForm(); }}>إلغاء</Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
+        <DialogContent className="max-w-xl" dir="rtl">
+          <DialogHeader><DialogTitle>تسجيل تقييم معرفة للتذكرة</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2"><Label>المادة المعرفية</Label><Select value={feedbackArticleId || "none"} onValueChange={(value) => setFeedbackArticleId(value === "none" ? "" : value)}><SelectTrigger><SelectValue placeholder="اختر مادة" /></SelectTrigger><SelectContent><SelectItem value="none">اختر مادة</SelectItem>{(refs?.knowledge ?? []).map((item) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label>نتيجة التطبيق</Label><Select value={feedbackRating} onValueChange={setFeedbackRating}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="success">ناجح</SelectItem><SelectItem value="partial">جزئي</SelectItem><SelectItem value="failure">فاشل</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label>ملاحظات</Label><Textarea value={feedbackNotes} onChange={(e) => setFeedbackNotes(e.target.value)} placeholder="ملاحظات إضافية (اختياري)" /></div>
+            <div className="flex justify-start gap-2"><Button type="button" onClick={submitKnowledgeFeedback}>حفظ التقييم</Button><Button type="button" variant="outline" onClick={() => setFeedbackOpen(false)}>إلغاء</Button></div>
+          </div>
         </DialogContent>
       </Dialog>
     </AppShell>
