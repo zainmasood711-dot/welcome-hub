@@ -239,7 +239,7 @@ const knowledgeSchema = z.object({
 const knowledgeFeedbackSchema = z.object({
   knowledge_base_id: z.string().uuid(),
   ticket_id: z.string().uuid().optional().nullable(),
-  engineer_id: z.string().uuid(),
+  engineer_id: z.string().uuid().optional().nullable(),
   rating: z.enum(["success", "failure", "partial"]),
   notes: z.string().trim().max(1500).optional().nullable(),
 });
@@ -1219,6 +1219,140 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
     if (linkError) throw new Error(`تم إنشاء المادة لكن تعذر ربطها بالتذكرة: ${linkError.message}`);
 
     return { created: true, articleId: createdArticle.id };
+  });
+
+export const createKnowledgeArticleFromContext = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => createKnowledgeFromContextSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    if (data.source_type === "ticket") {
+      return createKnowledgeArticleFromTicket({ data: { ticket_id: data.source_id, title: data.title ?? null } });
+    }
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from("assignments")
+      .select("id, ticket_id, work_done, recommendations")
+      .eq("id", data.source_id)
+      .single();
+    if (assignmentError) throw new Error(`تعذر تحميل المهمة: ${assignmentError.message}`);
+
+    const { data: ticket, error: ticketError } = assignment.ticket_id
+      ? await supabase
+          .from("tickets")
+          .select("id, description, affected_product_id, error_code_text")
+          .eq("id", assignment.ticket_id)
+          .maybeSingle()
+      : { data: null, error: null };
+    if (ticketError) throw new Error(`تعذر تحميل التذكرة المرتبطة: ${ticketError.message}`);
+
+    const solutionSteps = (assignment.work_done ?? assignment.recommendations ?? "").trim();
+    if (solutionSteps.length < 10) {
+      throw new Error("أدخل تقرير عمل واضح في المهمة أولًا (10 أحرف على الأقل)");
+    }
+
+    const issueDescription = (ticket?.description ?? assignment.recommendations ?? assignment.work_done ?? "").trim();
+    if (issueDescription.length < 5) {
+      throw new Error("الوصف غير كافٍ لإنشاء مادة معرفية");
+    }
+
+    const generatedKeywords = await generateKnowledgeKeywords(supabase, {
+      productId: ticket?.affected_product_id ?? null,
+      errorCode: ticket?.error_code_text ?? null,
+      issueDescription,
+      providedKeywords: null,
+    });
+
+    const title =
+      data.title?.trim() ||
+      `تقرير ميداني: ${ticket?.error_code_text?.trim() || "عطل بدون كود"}${ticket?.affected_product_id ? " - منتج محدد" : ""}`;
+
+    const { data: createdArticle, error: createError } = await supabase
+      .from("knowledge_base")
+      .insert({
+        title,
+        issue_description: issueDescription,
+        solution_steps: solutionSteps,
+        product_id: ticket?.affected_product_id ?? null,
+        error_code_text: ticket?.error_code_text ?? null,
+        search_keywords: generatedKeywords || null,
+        source: "auto_from_ticket",
+        linked_ticket_ids: ticket?.id ? [ticket.id] : [],
+        success_count: 0,
+        fail_count: 0,
+        effectiveness_rate: 0,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (createError) throw new Error(`تعذر إنشاء المادة المعرفية: ${createError.message}`);
+
+    if (ticket?.id) {
+      const { error: linkError } = await supabase.from("tickets").update({ knowledge_base_id: createdArticle.id }).eq("id", ticket.id);
+      if (linkError) throw new Error(`تم إنشاء المادة لكن تعذر ربطها بالتذكرة: ${linkError.message}`);
+    }
+
+    return { created: true, articleId: createdArticle.id };
+  });
+
+export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => knowledgeArticleDetailsSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+
+    const { data: article, error: articleError } = await supabase.from("knowledge_base").select("*").eq("id", data.article_id).single();
+    if (articleError) throw new Error(`تعذر تحميل المادة المعرفية: ${articleError.message}`);
+
+    const linkedTicketIds = Array.isArray(article.linked_ticket_ids)
+      ? article.linked_ticket_ids.filter((value: unknown): value is string => typeof value === "string")
+      : [];
+
+    const [ticketsRes, feedbackRes, attachmentsRes] = await Promise.all([
+      linkedTicketIds.length
+        ? supabase
+            .from("tickets")
+            .select("id, status, priority, description, created_at")
+            .in("id", linkedTicketIds)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [], error: null }),
+      supabase
+        .from("knowledge_feedback")
+        .select("id, knowledge_base_id, ticket_id, engineer_id, rating, notes, created_at")
+        .eq("knowledge_base_id", article.id)
+        .order("created_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("attachments")
+        .select("id, file_type, file_path, original_name, file_size, description, created_at")
+        .eq("attachable_type", "knowledge_base")
+        .eq("attachable_id", article.id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (ticketsRes.error) throw new Error(`تعذر تحميل التذاكر المرتبطة: ${ticketsRes.error.message}`);
+    if (feedbackRes.error) throw new Error(`تعذر تحميل تقييمات المادة: ${feedbackRes.error.message}`);
+    if (attachmentsRes.error) throw new Error(`تعذر تحميل مرفقات المادة: ${attachmentsRes.error.message}`);
+
+    const feedbackRows = feedbackRes.data ?? [];
+    const successCount = feedbackRows.filter((row) => row.rating === "success").length;
+    const failCount = feedbackRows.filter((row) => row.rating === "failure").length;
+    const partialCount = feedbackRows.filter((row) => row.rating === "partial").length;
+
+    return {
+      article,
+      linked_tickets: ticketsRes.data ?? [],
+      feedback: feedbackRows,
+      attachments: attachmentsRes.data ?? [],
+      metrics: {
+        success_count: successCount,
+        fail_count: failCount,
+        partial_count: partialCount,
+        effectiveness_rate: calculateEffectivenessRate(successCount, failCount),
+      },
+    };
   });
 
 export const listAssignments = createServerFn({ method: "GET" })
