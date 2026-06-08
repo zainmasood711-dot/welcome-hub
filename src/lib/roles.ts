@@ -89,13 +89,7 @@ export const rolePermissions: Record<AppRole, AppPermission[]> = {
   manager: [
     "dashboard.read",
     "reports.management.read",
-    "products.read",
-    "error_codes.read",
-    "tickets.read_all",
-    "field_assignments.read_all",
-    "install_assignments.read_all",
-    "notifications.read",
-    "engineers.read_all",
+    "notifications.read"
   ],
 };
 
