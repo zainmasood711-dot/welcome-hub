@@ -267,9 +267,36 @@ const knowledgeSearchSchema = z.object({
   limit: z.number().int().min(1).max(10).default(5),
 });
 
+const knowledgeListFiltersSchema = z.object({
+  search: z.string().trim().max(200).optional().nullable(),
+  product_id: z.string().uuid().optional().nullable(),
+  source: z.enum(["manual", "auto_from_ticket"]).optional().nullable(),
+  min_effectiveness: z.number().min(0).max(100).optional().nullable(),
+  sort_by: z.enum(["newest", "effectiveness", "usage"]).default("newest"),
+  limit: z.number().int().min(1).max(300).default(200),
+});
+
 const createKnowledgeFromTicketSchema = z.object({
   ticket_id: z.string().uuid(),
   title: z.string().trim().min(3).max(200).optional().nullable(),
+});
+
+const createKnowledgeFromContextSchema = z.object({
+  source_type: z.enum(["ticket", "assignment"]),
+  source_id: z.string().uuid(),
+  title: z.string().trim().min(3).max(200).optional().nullable(),
+});
+
+const knowledgeArticleDetailsSchema = z.object({
+  article_id: z.string().uuid(),
+});
+
+const knowledgeFeedbackFromContextSchema = z.object({
+  knowledge_base_id: z.string().uuid(),
+  rating: z.enum(["success", "failure", "partial"]),
+  notes: z.string().trim().max(1500).optional().nullable(),
+  ticket_id: z.string().uuid().optional().nullable(),
+  assignment_id: z.string().uuid().optional().nullable(),
 });
 
 const imageExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
