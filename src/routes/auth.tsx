@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Loader2, LogIn } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,6 +14,7 @@ import { getClientRoles } from "@/lib/auth-client";
 import { roleHomePath } from "@/lib/roles";
 
 export const Route = createFileRoute("/auth")({
+  ssr: false,
   beforeLoad: async () => {
     const { data, error } = await supabase.auth.getUser();
     if (!error && data.user) {
@@ -43,7 +44,7 @@ function AuthPage() {
     if (cached) setIdentifier(cached);
   }, []);
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!identifier.trim() || !password) {
       toast.error("يرجى إدخال بيانات الدخول كاملة");
