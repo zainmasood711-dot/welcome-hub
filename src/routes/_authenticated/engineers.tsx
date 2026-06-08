@@ -29,11 +29,11 @@ import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
 import { formatDate } from "@/lib/format";
 import { linkEngineerToProfile, listEngineers, listProfilesForLink, saveEngineer } from "@/lib/phase1.functions";
-import { hasAnyRole } from "@/lib/roles";
+import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/engineers")({
   beforeLoad: async () => {
-    await requireRole(["support_engineer", "manager"]);
+    await requireRole(["support_engineer", "manager", "field_engineer"]);
   },
   component: EngineersPage,
 });
@@ -47,7 +47,7 @@ function EngineersPage() {
 
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
-  const canManage = hasAnyRole(roles, ["support_engineer"]);
+  const canManage = hasAnyPermission(roles, ["engineers.manage"]);
 
   const { data: engineers = [], isLoading } = useQuery({
     queryKey: ["engineers"],

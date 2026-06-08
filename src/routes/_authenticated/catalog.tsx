@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
 import { getCatalogData, saveBrand, saveCategory, saveProduct } from "@/lib/phase1.functions";
-import { hasAnyRole } from "@/lib/roles";
+import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/catalog")({
   beforeLoad: async () => {
@@ -47,7 +47,7 @@ function CatalogPage() {
   const saveProductFn = useServerFn(saveProduct);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
-  const canManage = hasAnyRole(roles, ["support_engineer"]);
+  const canManage = hasAnyPermission(roles, ["products.manage"]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["catalog"],

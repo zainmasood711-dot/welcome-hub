@@ -28,7 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
 import { getCatalogData, listErrorCodes, saveErrorCode } from "@/lib/phase1.functions";
-import { hasAnyRole } from "@/lib/roles";
+import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/error-codes")({
   beforeLoad: async () => {
@@ -44,7 +44,7 @@ function ErrorCodesPage() {
   const catalogFn = useServerFn(getCatalogData);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
-  const canManage = hasAnyRole(roles, ["support_engineer"]);
+  const canManage = hasAnyPermission(roles, ["error_codes.manage"]);
 
   const { data: errorCodes = [], isLoading } = useQuery({
     queryKey: ["error-codes"],
