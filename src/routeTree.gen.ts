@@ -15,6 +15,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedErrorCodesRouteImport } from './routes/_authenticated/error-codes'
 import { Route as AuthenticatedEngineersRouteImport } from './routes/_authenticated/engineers'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
+import { Route as AuthenticatedCustomerSystemsRouteImport } from './routes/_authenticated/customer-systems'
 import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
 
 const AuthRoute = AuthRouteImport.update({
@@ -46,6 +48,17 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedCustomersRoute = AuthenticatedCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCustomerSystemsRoute =
+  AuthenticatedCustomerSystemsRouteImport.update({
+    id: '/customer-systems',
+    path: '/customer-systems',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
   id: '/catalog',
   path: '/catalog',
@@ -56,6 +69,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/catalog': typeof AuthenticatedCatalogRoute
+  '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
+  '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/engineers': typeof AuthenticatedEngineersRoute
   '/error-codes': typeof AuthenticatedErrorCodesRoute
@@ -64,6 +79,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/catalog': typeof AuthenticatedCatalogRoute
+  '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
+  '/customers': typeof AuthenticatedCustomersRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/engineers': typeof AuthenticatedEngineersRoute
   '/error-codes': typeof AuthenticatedErrorCodesRoute
@@ -74,6 +91,8 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
+  '/_authenticated/customer-systems': typeof AuthenticatedCustomerSystemsRoute
+  '/_authenticated/customers': typeof AuthenticatedCustomersRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/engineers': typeof AuthenticatedEngineersRoute
   '/_authenticated/error-codes': typeof AuthenticatedErrorCodesRoute
@@ -84,17 +103,29 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/catalog'
+    | '/customer-systems'
+    | '/customers'
     | '/dashboard'
     | '/engineers'
     | '/error-codes'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/catalog' | '/dashboard' | '/engineers' | '/error-codes'
+  to:
+    | '/'
+    | '/auth'
+    | '/catalog'
+    | '/customer-systems'
+    | '/customers'
+    | '/dashboard'
+    | '/engineers'
+    | '/error-codes'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/catalog'
+    | '/_authenticated/customer-systems'
+    | '/_authenticated/customers'
     | '/_authenticated/dashboard'
     | '/_authenticated/engineers'
     | '/_authenticated/error-codes'
@@ -150,6 +181,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/customers': {
+      id: '/_authenticated/customers'
+      path: '/customers'
+      fullPath: '/customers'
+      preLoaderRoute: typeof AuthenticatedCustomersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/customer-systems': {
+      id: '/_authenticated/customer-systems'
+      path: '/customer-systems'
+      fullPath: '/customer-systems'
+      preLoaderRoute: typeof AuthenticatedCustomerSystemsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/catalog': {
       id: '/_authenticated/catalog'
       path: '/catalog'
@@ -162,6 +207,8 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
+  AuthenticatedCustomerSystemsRoute: typeof AuthenticatedCustomerSystemsRoute
+  AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedEngineersRoute: typeof AuthenticatedEngineersRoute
   AuthenticatedErrorCodesRoute: typeof AuthenticatedErrorCodesRoute
@@ -169,6 +216,8 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
+  AuthenticatedCustomerSystemsRoute: AuthenticatedCustomerSystemsRoute,
+  AuthenticatedCustomersRoute: AuthenticatedCustomersRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedEngineersRoute: AuthenticatedEngineersRoute,
   AuthenticatedErrorCodesRoute: AuthenticatedErrorCodesRoute,
@@ -185,3 +234,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
