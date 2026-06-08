@@ -50,6 +50,8 @@ const ticketSchema = z.object({
   solution_type: z.enum(["remote", "field", "bring_to_center", "no_fix_needed"]).optional().nullable(),
   remote_solution_notes: z.string().trim().max(4000).optional().nullable(),
   knowledge_base_id: z.string().uuid().optional().nullable(),
+  knowledge_feedback_rating: z.enum(["success", "failure", "partial"]).optional().nullable(),
+  knowledge_feedback_notes: z.string().trim().max(1500).optional().nullable(),
   resolved_by: z.string().uuid().optional().nullable(),
   resolved_at: z.string().optional().nullable(),
 });
@@ -128,9 +130,43 @@ const readNotificationSchema = z.object({
   notification_id: z.string().uuid(),
 });
 
+const knowledgeSearchSchema = z.object({
+  affected_product_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+  issue_description: z.string().trim().max(2500).optional().nullable(),
+  limit: z.number().int().min(1).max(10).default(5),
+});
+
+const createKnowledgeFromTicketSchema = z.object({
+  ticket_id: z.string().uuid(),
+  title: z.string().trim().min(3).max(200).optional().nullable(),
+});
+
 const imageExtensions = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
 const documentExtensions = new Set(["pdf", "doc", "docx", "xls", "xlsx", "csv", "txt"]);
 const batteryExtensions = new Set(["csv", "xlsx", "txt", "bin"]);
+const keywordStopWords = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "على",
+  "من",
+  "في",
+  "الى",
+  "إلى",
+  "عن",
+  "تم",
+  "كان",
+  "وجود",
+  "عند",
+  "عدم",
+  "بعد",
+  "قبل",
+]);
 
 function getFileExtension(path: string) {
   const clean = path.trim().toLowerCase();
@@ -159,6 +195,27 @@ function validateAttachmentInput(data: z.infer<typeof attachmentSchema>) {
   if (data.file_size != null && data.file_size > 20_971_520) {
     throw new Error("حجم الملف يتجاوز الحد المسموح 20MB");
   }
+}
+
+function normalizeText(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function calculateEffectivenessRate(successCount: number, failCount: number) {
+  const total = successCount + failCount;
+  if (total === 0) return 0;
+  return Number(((successCount / total) * 100).toFixed(2));
+}
+
+function extractImportantWords(text?: string | null) {
+  return Array.from(
+    new Set(
+      normalizeText(text)
+        .replace(/[^\p{L}\p{N}\s]/gu, " ")
+        .split(/\s+/)
+        .filter((word) => word.length >= 3 && !keywordStopWords.has(word)),
+    ),
+  ).slice(0, 12);
 }
 
 async function getUserRoles(supabase: SupabaseClient<Database>, userId: string): Promise<AppRole[]> {
