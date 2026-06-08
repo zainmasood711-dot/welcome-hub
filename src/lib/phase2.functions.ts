@@ -10,7 +10,12 @@ type AppRole = Database["public"]["Enums"]["app_role"];
 const customerSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().trim().min(2).max(160),
-  phone: z.string().trim().min(6).max(25),
+  phone: z
+    .string()
+    .trim()
+    .min(8)
+    .max(25)
+    .regex(/^[0-9+\-()\s]+$/, "رقم الهاتف يجب أن يحتوي أرقامًا ورموز هاتف فقط"),
   governorate: z.string().trim().max(80).optional().nullable(),
   city: z.string().trim().max(80).optional().nullable(),
   address: z.string().trim().max(300).optional().nullable(),
@@ -35,6 +40,23 @@ const systemAssetSchema = z.object({
   serial_number: z.string().trim().max(150).optional().nullable(),
   warranty_status: z.enum(["valid", "expired", "unknown"]),
   notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+const customerSystemAssetDraftSchema = z.object({
+  product_id: z.string().uuid(),
+  quantity: z.number().int().min(1).max(999),
+  serial_number: z.string().trim().max(150).optional().nullable(),
+  warranty_status: z.enum(["valid", "expired", "unknown"]),
+  notes: z.string().trim().max(2000).optional().nullable(),
+});
+
+const customerSystemWithAssetsSchema = z.object({
+  system: customerSystemSchema,
+  assets: z.array(customerSystemAssetDraftSchema).max(100).default([]),
+});
+
+const customerDetailsInputSchema = z.object({
+  customer_id: z.string().uuid(),
 });
 
 const ticketSchema = z.object({
@@ -336,6 +358,50 @@ export const listCustomers = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+export const getCustomerDetailsBundle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => customerDetailsInputSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+
+    const { data: customer, error: customerError } = await supabase.from("customers").select("*").eq("id", data.customer_id).maybeSingle();
+    if (customerError) throw new Error(`تعذر تحميل بيانات العميل: ${customerError.message}`);
+    if (!customer) throw new Error("العميل غير موجود");
+
+    const { data: systems, error: systemsError } = await supabase
+      .from("customer_systems")
+      .select("*")
+      .eq("customer_id", data.customer_id)
+      .order("created_at", { ascending: false });
+    if (systemsError) throw new Error(`تعذر تحميل أنظمة العميل: ${systemsError.message}`);
+
+    const { data: tickets, error: ticketsError } = await supabase
+      .from("tickets")
+      .select("*")
+      .eq("customer_id", data.customer_id)
+      .order("created_at", { ascending: false });
+    if (ticketsError) throw new Error(`تعذر تحميل تذاكر العميل: ${ticketsError.message}`);
+
+    const ticketIds = (tickets ?? []).map((ticket) => ticket.id);
+    const { data: attachments, error: attachmentsError } = ticketIds.length
+      ? await supabase
+          .from("attachments")
+          .select("*")
+          .eq("attachable_type", "ticket")
+          .in("attachable_id", ticketIds)
+          .order("created_at", { ascending: false })
+      : { data: [], error: null };
+
+    if (attachmentsError) throw new Error(`تعذر تحميل مرفقات العميل: ${attachmentsError.message}`);
+
+    return {
+      customer,
+      systems: systems ?? [],
+      tickets: tickets ?? [],
+      attachments: attachments ?? [],
+    };
+  });
+
 export const saveCustomer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => customerSchema.parse(input))
@@ -465,6 +531,68 @@ export const saveSystemAsset = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(`تعذر إضافة مكون النظام: ${error.message}`);
     return { ok: true };
+  });
+
+export const saveCustomerSystemWithAssets = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => customerSystemWithAssetsSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    const systemPayload = data.system;
+    let systemId = systemPayload.id;
+
+    if (systemId) {
+      const { data: updated, error } = await supabase
+        .from("customer_systems")
+        .update({
+          customer_id: systemPayload.customer_id,
+          system_name: systemPayload.system_name,
+          installation_date: systemPayload.installation_date || null,
+          status: systemPayload.status,
+          notes: systemPayload.notes ?? null,
+        })
+        .eq("id", systemId)
+        .select("id")
+        .single();
+      if (error) throw new Error(`تعذر تعديل نظام العميل: ${error.message}`);
+      systemId = updated.id;
+
+      const { error: deleteAssetsError } = await supabase.from("system_assets").delete().eq("customer_system_id", systemId);
+      if (deleteAssetsError) throw new Error(`تعذر تحديث مكونات النظام: ${deleteAssetsError.message}`);
+    } else {
+      const { data: created, error } = await supabase
+        .from("customer_systems")
+        .insert({
+          customer_id: systemPayload.customer_id,
+          system_name: systemPayload.system_name,
+          installation_date: systemPayload.installation_date || null,
+          status: systemPayload.status,
+          notes: systemPayload.notes ?? null,
+          created_by: userId,
+        })
+        .select("id")
+        .single();
+      if (error) throw new Error(`تعذر إنشاء نظام العميل: ${error.message}`);
+      systemId = created.id;
+    }
+
+    if (data.assets.length > 0) {
+      const rows = data.assets.map((asset) => ({
+        customer_system_id: systemId,
+        product_id: asset.product_id,
+        quantity: asset.quantity,
+        serial_number: asset.serial_number ?? null,
+        warranty_status: asset.warranty_status,
+        notes: asset.notes ?? null,
+      }));
+
+      const { error: insertAssetsError } = await supabase.from("system_assets").insert(rows);
+      if (insertAssetsError) throw new Error(`تعذر حفظ مكونات النظام: ${insertAssetsError.message}`);
+    }
+
+    return { ok: true, id: systemId, assets_count: data.assets.length };
   });
 
 export const listTickets = createServerFn({ method: "GET" })
