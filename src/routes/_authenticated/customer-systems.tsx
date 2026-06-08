@@ -236,7 +236,7 @@ function CustomerSystemsPage() {
                                     product_id: asset.product_id,
                                     quantity: asset.quantity,
                                     serial_number: asset.serial_number ?? "",
-                                    warranty_status: asset.warranty_status,
+                                    warranty_status: asset.warranty_status as "valid" | "expired" | "unknown",
                                     notes: asset.notes ?? "",
                                   }));
                                 setPendingAssets(existingRows);
