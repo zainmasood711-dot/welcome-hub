@@ -64,6 +64,8 @@ function TicketsPage() {
     id: "",
     customer_id: "",
     customer_system_id: "",
+    category_id: "",
+    error_code_id: "",
     ticket_type: "fault",
     status: "new",
     priority: "medium",
@@ -140,6 +142,8 @@ function TicketsPage() {
           id: form.id || undefined,
           customer_id: form.customer_id,
           customer_system_id: form.customer_system_id || null,
+          category_id: form.category_id || null,
+          error_code_id: form.error_code_id || null,
           ticket_type: form.ticket_type as "fault" | "inquiry" | "preventive_maintenance" | "new_installation",
           status: form.status as "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed",
           priority: form.priority as "low" | "medium" | "high" | "critical",
@@ -157,7 +161,7 @@ function TicketsPage() {
       });
       toast.success("تم حفظ التذكرة");
       setOpen(false);
-      setForm({ id: "", customer_id: "", customer_system_id: "", ticket_type: "fault", status: "new", priority: "medium", description: "", affected_product_id: "", error_code_text: "", solution_type: "", remote_solution_notes: "", knowledge_base_id: "" });
+      setForm({ id: "", customer_id: "", customer_system_id: "", category_id: "", error_code_id: "", ticket_type: "fault", status: "new", priority: "medium", description: "", affected_product_id: "", error_code_text: "", solution_type: "", remote_solution_notes: "", knowledge_base_id: "" });
       setCloseFeedback({ rating: "success", notes: "" });
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base-all"] });
@@ -206,6 +210,8 @@ function TicketsPage() {
           id: form.id,
           customer_id: form.customer_id,
           customer_system_id: form.customer_system_id || null,
+          category_id: form.category_id || null,
+          error_code_id: form.error_code_id || null,
           ticket_type: form.ticket_type as "fault" | "inquiry" | "preventive_maintenance" | "new_installation",
           status: form.status as "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed",
           priority: form.priority as "low" | "medium" | "high" | "critical",
@@ -269,16 +275,20 @@ function TicketsPage() {
 
         <div className="rounded-lg border bg-card">
           <Table>
-            <TableHeader><TableRow><TableHead>العميل</TableHead><TableHead>النوع</TableHead><TableHead>الحالة</TableHead><TableHead>الأولوية</TableHead><TableHead>الوصف</TableHead>{canManage && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
+            <TableHeader><TableRow><TableHead>العميل</TableHead><TableHead>النوع</TableHead><TableHead>التصنيف</TableHead><TableHead>كود العطل</TableHead><TableHead>الحالة</TableHead><TableHead>الأولوية</TableHead><TableHead>الوصف</TableHead>{canManage && <TableHead className="text-left">إجراء</TableHead>}</TableRow></TableHeader>
             <TableBody>
               {paginatedTickets.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">لا توجد تذاكر مطابقة حاليًا.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">لا توجد تذاكر مطابقة حاليًا.</TableCell></TableRow>
               ) : paginatedTickets.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell>{refs?.customers.find((c) => c.id === t.customer_id)?.name ?? "—"}</TableCell>
-                  <TableCell>{t.ticket_type}</TableCell><TableCell>{statusBadge(t.status)}</TableCell><TableCell>{t.priority}</TableCell>
+                  <TableCell>{t.ticket_type}</TableCell>
+                  <TableCell>{refs?.productCategories?.find((cat) => cat.id === t.category_id)?.name_ar ?? "—"}</TableCell>
+                  <TableCell>{refs?.errorCodes?.find((code) => code.id === t.error_code_id)?.code ?? t.error_code_text ?? "—"}</TableCell>
+                  <TableCell>{statusBadge(t.status)}</TableCell>
+                  <TableCell>{t.priority}</TableCell>
                   <TableCell className="max-w-[420px] truncate">{t.description}</TableCell>
-                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
+                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: t.id, customer_id: t.customer_id, customer_system_id: t.customer_system_id ?? "", category_id: t.category_id ?? "", error_code_id: t.error_code_id ?? "", ticket_type: t.ticket_type, status: t.status, priority: t.priority, description: t.description, affected_product_id: t.affected_product_id ?? "", error_code_text: t.error_code_text ?? "", solution_type: t.solution_type ?? "", remote_solution_notes: t.remote_solution_notes ?? "", knowledge_base_id: t.knowledge_base_id ?? "" }); setCloseFeedback({ rating: "success", notes: "" }); setOpen(true); }}>تعديل</Button></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
@@ -321,6 +331,42 @@ function TicketsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2"><Label>المنتج المتأثر</Label><Select value={form.affected_product_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, affected_product_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">غير محدد</SelectItem>{(refs?.products ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.model}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-2"><Label>مرجع مادة معرفية</Label><Select value={form.knowledge_base_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, knowledge_base_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(refs?.knowledge ?? []).map((k) => <SelectItem key={k.id} value={k.id}>{k.title}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>التصنيف</Label>
+                <Select value={form.category_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, category_id: v === "none" ? "" : v }))}>
+                  <SelectTrigger><SelectValue placeholder="اختر تصنيف" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">غير محدد</SelectItem>
+                    {(refs?.productCategories ?? []).map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name_ar}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>كود العطل</Label>
+                <Select
+                  value={form.error_code_id || "none"}
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      setForm((p) => ({ ...p, error_code_id: "" }));
+                      return;
+                    }
+                    const selected = (refs?.errorCodes ?? []).find((code) => code.id === v);
+                    setForm((p) => ({ ...p, error_code_id: v, error_code_text: selected?.code ?? p.error_code_text }));
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="اختر كود العطل" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">غير محدد</SelectItem>
+                    {(refs?.errorCodes ?? []).map((code) => (
+                      <SelectItem key={code.id} value={code.id}>{code.code} - {code.description ?? code.category}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2"><Label>رمز الخطأ النصي</Label><Input value={form.error_code_text} onChange={(e) => setForm((p) => ({ ...p, error_code_text: e.target.value }))} /></div>
             <div className="space-y-2"><Label>نوع الحل</Label><Select value={form.solution_type || "none"} onValueChange={(v) => setForm((p) => ({ ...p, solution_type: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem><SelectItem value="remote">عن بُعد</SelectItem><SelectItem value="field">ميداني</SelectItem><SelectItem value="bring_to_center">إحضار للمركز</SelectItem><SelectItem value="no_fix_needed">لا يتطلب إصلاح</SelectItem></SelectContent></Select></div>
