@@ -23,7 +23,6 @@ import {
   listKnowledgeBase,
   listTickets,
   saveCustomer,
-  saveKnowledgeFeedback,
   saveTicket,
 } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
@@ -40,7 +39,6 @@ function TicketsPage() {
   const listFn = useServerFn(listTickets);
   const saveFn = useServerFn(saveTicket);
   const saveCustomerFn = useServerFn(saveCustomer);
-  const saveFeedbackFn = useServerFn(saveKnowledgeFeedback);
   const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
   const createFromTicketFn = useServerFn(createKnowledgeArticleFromTicket);
   const refsFn = useServerFn(getPhase2References);
@@ -186,18 +184,6 @@ function TicketsPage() {
           resolved_at: null,
         },
       });
-
-      if (accessData?.profile.engineer_id) {
-        await saveFeedbackFn({
-          data: {
-            knowledge_base_id: selected.id,
-            ticket_id: form.id,
-            engineer_id: accessData.profile.engineer_id,
-            rating: "partial",
-            notes: "تم استخدام الحل المقترح من شاشة التذاكر",
-          },
-        });
-      }
 
       toast.success("تم ربط التذكرة بالحل المقترح");
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
