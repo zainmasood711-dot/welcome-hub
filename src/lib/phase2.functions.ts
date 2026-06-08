@@ -231,6 +231,45 @@ async function assertSupportRole(supabase: SupabaseClient<Database>, userId: str
   }
 }
 
+async function generateKnowledgeKeywords(
+  supabase: SupabaseClient<Database>,
+  params: {
+    productId?: string | null;
+    errorCode?: string | null;
+    issueDescription?: string | null;
+    providedKeywords?: string | null;
+  },
+) {
+  const keywordSet = new Set<string>();
+
+  extractImportantWords(params.providedKeywords).forEach((word) => keywordSet.add(word));
+  extractImportantWords(params.issueDescription).forEach((word) => keywordSet.add(word));
+
+  const normalizedError = normalizeText(params.errorCode);
+  if (normalizedError) keywordSet.add(normalizedError);
+
+  if (params.productId) {
+    const { data: product } = await supabase
+      .from("products")
+      .select("id, model, brand_id")
+      .eq("id", params.productId)
+      .maybeSingle();
+
+    if (product?.model) {
+      extractImportantWords(product.model).forEach((word) => keywordSet.add(word));
+    }
+
+    if (product?.brand_id) {
+      const { data: brand } = await supabase.from("brands").select("name").eq("id", product.brand_id).maybeSingle();
+      if (brand?.name) {
+        extractImportantWords(brand.name).forEach((word) => keywordSet.add(word));
+      }
+    }
+  }
+
+  return Array.from(keywordSet).join(", ");
+}
+
 export const getPhase2References = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -788,6 +827,12 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     await assertSupportRole(supabase, userId);
+    const generatedKeywords = await generateKnowledgeKeywords(supabase, {
+      productId: data.product_id,
+      errorCode: data.error_code_text,
+      issueDescription: data.issue_description,
+      providedKeywords: data.search_keywords,
+    });
 
     if (data.id) {
       const { error } = await supabase
@@ -798,7 +843,7 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
           solution_steps: data.solution_steps,
           product_id: data.product_id ?? null,
           error_code_text: data.error_code_text ?? null,
-          search_keywords: data.search_keywords ?? null,
+          search_keywords: generatedKeywords || null,
           source: data.source,
           linked_ticket_ids: data.linked_ticket_ids,
           success_count: data.success_count,
@@ -816,7 +861,7 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
       solution_steps: data.solution_steps,
       product_id: data.product_id ?? null,
       error_code_text: data.error_code_text ?? null,
-      search_keywords: data.search_keywords ?? null,
+      search_keywords: generatedKeywords || null,
       source: data.source,
       linked_ticket_ids: data.linked_ticket_ids,
       success_count: data.success_count,
