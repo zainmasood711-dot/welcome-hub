@@ -444,22 +444,24 @@ export const saveTicket = createServerFn({ method: "POST" })
       if (error) throw new Error(`تعذر تعديل التذكرة: ${error.message}`);
 
       const rating = data.knowledge_feedback_rating;
+      const knowledgeBaseId = data.knowledge_base_id;
       const shouldApplyKnowledgeOutcome =
         existingTicket.status !== "closed" &&
         data.status === "closed" &&
-        !!data.knowledge_base_id &&
+        !!knowledgeBaseId &&
         (rating === "success" || rating === "failure");
 
       if (shouldApplyKnowledgeOutcome) {
+        const finalRating: "success" | "failure" = rating === "success" ? "success" : "failure";
         const { data: kbRow, error: kbReadError } = await supabase
           .from("knowledge_base")
           .select("id, success_count, fail_count")
-          .eq("id", data.knowledge_base_id as string)
+          .eq("id", knowledgeBaseId)
           .single();
         if (kbReadError) throw new Error(`تعذر تحديث إحصائيات المادة المعرفية: ${kbReadError.message}`);
 
-        const nextSuccess = kbRow.success_count + (rating === "success" ? 1 : 0);
-        const nextFail = kbRow.fail_count + (rating === "failure" ? 1 : 0);
+        const nextSuccess = kbRow.success_count + (finalRating === "success" ? 1 : 0);
+        const nextFail = kbRow.fail_count + (finalRating === "failure" ? 1 : 0);
         const nextEffectiveness = calculateEffectivenessRate(nextSuccess, nextFail);
 
         const { error: kbUpdateError } = await supabase
@@ -475,10 +477,10 @@ export const saveTicket = createServerFn({ method: "POST" })
         const { data: currentProfile } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
         if (currentProfile?.engineer_id) {
           const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
-            knowledge_base_id: data.knowledge_base_id,
+            knowledge_base_id: knowledgeBaseId,
             ticket_id: data.id,
             engineer_id: currentProfile.engineer_id,
-            rating,
+            rating: finalRating,
             notes: data.knowledge_feedback_notes ?? null,
           });
           if (feedbackError) throw new Error(`تعذر تسجيل تقييم الحل: ${feedbackError.message}`);
@@ -584,15 +586,16 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
 
     const { data: existingArticles, error: existingError } = await supabase
       .from("knowledge_base")
-      .select("id")
-      .or(
-        `and(product_id.eq.${ticket.affected_product_id ?? "00000000-0000-0000-0000-000000000000"},error_code_text.eq.${(ticket.error_code_text ?? "").replace(/,/g, "")}),solution_steps.eq.${solutionNotes.replace(/,/g, " ")}`,
-      )
-      .limit(1);
+      .select("id, solution_steps")
+      .eq("product_id", ticket.affected_product_id ?? "00000000-0000-0000-0000-000000000000")
+      .eq("error_code_text", ticket.error_code_text ?? "")
+      .limit(25);
     if (existingError) throw new Error(`تعذر التحقق من تكرار المادة: ${existingError.message}`);
 
-    if ((existingArticles ?? []).length > 0) {
-      return { created: false, existingArticleId: existingArticles?.[0]?.id ?? null };
+    const normalizedSolution = normalizeText(solutionNotes);
+    const exactMatch = (existingArticles ?? []).find((article) => normalizeText(article.solution_steps) === normalizedSolution);
+    if (exactMatch) {
+      return { created: false, existingArticleId: exactMatch.id };
     }
 
     const keywordSet = new Set<string>(extractImportantWords(ticket.description));
@@ -611,9 +614,9 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
       }
 
       if (product?.brand_id) {
-        const { data: brand } = await supabase.from("brands").select("name_ar").eq("id", product.brand_id).maybeSingle();
-        if (brand?.name_ar) {
-          extractImportantWords(brand.name_ar).forEach((word) => keywordSet.add(word));
+        const { data: brand } = await supabase.from("brands").select("name").eq("id", product.brand_id).maybeSingle();
+        if (brand?.name) {
+          extractImportantWords(brand.name).forEach((word) => keywordSet.add(word));
         }
       }
     }
