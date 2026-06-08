@@ -125,7 +125,7 @@ function FieldTaskPage() {
       await submitFn({
         data: {
           assignment_id: assignmentId,
-          status: form.status as "in_progress" | "completed" | "cancelled",
+          status: form.status as "pending" | "in_progress" | "completed" | "cancelled",
           work_done: form.work_done || null,
           difficulties: form.difficulties || null,
           recommendations: form.recommendations || null,
@@ -189,7 +189,7 @@ function FieldTaskPage() {
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" variant="secondary" onClick={() => setForm((p) => ({ ...p, status: "in_progress" }))}>بدء المهمة</Button>
-              <Select value={form.status} onValueChange={(value) => setForm((p) => ({ ...p, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in_progress">قيد التنفيذ</SelectItem><SelectItem value="completed">مكتملة</SelectItem><SelectItem value="cancelled">ملغاة</SelectItem></SelectContent></Select>
+              <Select value={form.status} onValueChange={(value) => setForm((p) => ({ ...p, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">قيد الانتظار</SelectItem><SelectItem value="in_progress">قيد التنفيذ</SelectItem><SelectItem value="completed">مكتملة</SelectItem><SelectItem value="cancelled">ملغاة</SelectItem></SelectContent></Select>
             </div>
             <div className="space-y-2"><Label>ما تم إنجازه</Label><Textarea value={form.work_done} onChange={(e) => setForm((p) => ({ ...p, work_done: e.target.value }))} /></div>
             <div className="space-y-2"><Label>الصعوبات</Label><Textarea value={form.difficulties} onChange={(e) => setForm((p) => ({ ...p, difficulties: e.target.value }))} /></div>
