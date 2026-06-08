@@ -19,7 +19,7 @@ import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/customers")({
   beforeLoad: async () => {
-    await requireRole(["support_engineer", "field_engineer", "manager"]);
+    await requireRole(["support_engineer", "field_engineer"]);
   },
   component: CustomersPage,
 });
