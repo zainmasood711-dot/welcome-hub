@@ -52,7 +52,7 @@ function CustomerSystemsPage() {
   const { data: catalog } = useQuery({ queryKey: ["catalog-ref"], queryFn: () => catalogFn() });
   const { data: systems = [] } = useQuery({ queryKey: ["customer-systems"], queryFn: () => systemsFn() });
   const { data: assets = [] } = useQuery({ queryKey: ["system-assets"], queryFn: () => assetsFn() });
-  const { data: tickets = [] } = useQuery({ queryKey: ["system-tickets"], queryFn: () => ticketsFn() });
+  const { data: tickets = [] } = useQuery({ queryKey: ["system-tickets"], queryFn: () => ticketsFn({ data: {} }) });
 
   const [search, setSearch] = useState("");
   const [systemOpen, setSystemOpen] = useState(false);

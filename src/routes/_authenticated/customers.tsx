@@ -41,7 +41,7 @@ function CustomersPage() {
     queryFn: () => listFn(),
   });
   const { data: systems = [] } = useQuery({ queryKey: ["customers-systems"], queryFn: () => systemsFn() });
-  const { data: tickets = [] } = useQuery({ queryKey: ["customers-tickets"], queryFn: () => ticketsFn() });
+  const { data: tickets = [] } = useQuery({ queryKey: ["customers-tickets"], queryFn: () => ticketsFn({ data: {} }) });
 
   const [search, setSearch] = useState("");
   const [governorateFilter, setGovernorateFilter] = useState("all");
