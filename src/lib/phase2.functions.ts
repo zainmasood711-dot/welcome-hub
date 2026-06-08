@@ -1203,6 +1203,174 @@ export const listAssignments = createServerFn({ method: "GET" })
     return data ?? [];
   });
 
+export const createAssignmentFromSource = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => assignmentCreateFromSourceSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    if (!data.ticket_id && !data.customer_system_id) {
+      throw new Error("يجب اختيار مصدر للتكليف: تذكرة أو نظام عميل");
+    }
+
+    let customerSystemId = data.customer_system_id ?? null;
+    if (data.ticket_id && !customerSystemId) {
+      const { data: ticketRow, error: ticketError } = await supabase
+        .from("tickets")
+        .select("id, customer_system_id")
+        .eq("id", data.ticket_id)
+        .maybeSingle();
+      if (ticketError) throw new Error(`تعذر تحميل التذكرة: ${ticketError.message}`);
+      customerSystemId = ticketRow?.customer_system_id ?? null;
+    }
+
+    const { data: created, error } = await supabase
+      .from("assignments")
+      .insert({
+        ticket_id: data.ticket_id ?? null,
+        customer_system_id: customerSystemId,
+        engineer_id: data.engineer_id,
+        assigned_by: userId,
+        assignment_type: data.assignment_type,
+        scheduled_date: data.scheduled_date ?? null,
+        status: "pending",
+        recommendations: data.notes ?? null,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(`تعذر إنشاء التكليف: ${error.message}`);
+
+    if (data.ticket_id) {
+      const { error: updateTicketError } = await supabase
+        .from("tickets")
+        .update({ status: "assigned_field", solution_type: "field" })
+        .eq("id", data.ticket_id);
+      if (updateTicketError) throw new Error(`تم إنشاء التكليف لكن تعذر تحديث حالة التذكرة: ${updateTicketError.message}`);
+    }
+
+    return { ok: true, assignment_id: created.id };
+  });
+
+export const getAssignmentDetailsBundle = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => assignmentDetailsSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertCanAccessAssignment(supabase, userId, data.assignment_id);
+
+    const { data: assignment, error: assignmentError } = await supabase
+      .from("assignments")
+      .select("*")
+      .eq("id", data.assignment_id)
+      .single();
+    if (assignmentError) throw new Error(`تعذر تحميل بيانات المهمة: ${assignmentError.message}`);
+
+    const [ticketRes, systemRes, engineerRes, attachmentsRes, kbRes] = await Promise.all([
+      assignment.ticket_id
+        ? supabase
+            .from("tickets")
+            .select("id, customer_id, customer_system_id, status, priority, description, affected_product_id, error_code_text, created_at, solution_type")
+            .eq("id", assignment.ticket_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      assignment.customer_system_id
+        ? supabase
+            .from("customer_systems")
+            .select("id, customer_id, system_name, status, notes")
+            .eq("id", assignment.customer_system_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      supabase.from("engineers").select("id, name, phone, whatsapp").eq("id", assignment.engineer_id).maybeSingle(),
+      supabase
+        .from("attachments")
+        .select("id, attachable_type, attachable_id, file_type, file_path, original_name, file_size, description, created_at")
+        .eq("attachable_type", "assignment")
+        .eq("attachable_id", assignment.id)
+        .order("created_at", { ascending: false }),
+      supabase.from("knowledge_base").select("id, title, effectiveness_rate, solution_steps").order("effectiveness_rate", { ascending: false }).limit(20),
+    ]);
+
+    if (ticketRes.error) throw new Error(`تعذر تحميل التذكرة المرتبطة: ${ticketRes.error.message}`);
+    if (systemRes.error) throw new Error(`تعذر تحميل بيانات النظام: ${systemRes.error.message}`);
+    if (engineerRes.error) throw new Error(`تعذر تحميل بيانات المهندس: ${engineerRes.error.message}`);
+    if (attachmentsRes.error) throw new Error(`تعذر تحميل مرفقات المهمة: ${attachmentsRes.error.message}`);
+    if (kbRes.error) throw new Error(`تعذر تحميل مواد المعرفة: ${kbRes.error.message}`);
+
+    const resolvedSystem = systemRes.data ?? null;
+    const customerId = resolvedSystem?.customer_id ?? ticketRes.data?.customer_id ?? null;
+
+    const [customerRes, systemAssetsRes, previousTicketsRes, previousSolutionsRes] = await Promise.all([
+      customerId
+        ? supabase
+            .from("customers")
+            .select("id, name, phone, governorate, city, address, location_coordinates, notes")
+            .eq("id", customerId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      resolvedSystem
+        ? supabase
+            .from("system_assets")
+            .select("id, product_id, quantity, serial_number, warranty_status, notes")
+            .eq("customer_system_id", resolvedSystem.id)
+        : Promise.resolve({ data: [], error: null }),
+      customerId
+        ? supabase
+            .from("tickets")
+            .select("id, status, priority, description, error_code_text, created_at, knowledge_base_id")
+            .eq("customer_id", customerId)
+            .order("created_at", { ascending: false })
+            .limit(15)
+        : Promise.resolve({ data: [], error: null }),
+      customerId
+        ? supabase
+            .from("knowledge_feedback")
+            .select("id, ticket_id, rating, notes, created_at, knowledge_base_id")
+            .order("created_at", { ascending: false })
+            .limit(30)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (customerRes.error) throw new Error(`تعذر تحميل بيانات العميل: ${customerRes.error.message}`);
+    if (systemAssetsRes.error) throw new Error(`تعذر تحميل مكونات النظام: ${systemAssetsRes.error.message}`);
+    if (previousTicketsRes.error) throw new Error(`تعذر تحميل التذاكر السابقة: ${previousTicketsRes.error.message}`);
+    if (previousSolutionsRes.error) throw new Error(`تعذر تحميل الحلول السابقة: ${previousSolutionsRes.error.message}`);
+
+    const productIds = Array.from(new Set((systemAssetsRes.data ?? []).map((row) => row.product_id)));
+    const productsRes = productIds.length
+      ? await supabase.from("products").select("id, model").in("id", productIds)
+      : { data: [], error: null };
+    if (productsRes.error) throw new Error(`تعذر تحميل أسماء المكونات: ${productsRes.error.message}`);
+
+    const productMap = new Map((productsRes.data ?? []).map((row) => [row.id, row.model]));
+
+    const ticketIds = (previousTicketsRes.data ?? []).map((row) => row.id);
+    const ticketToFeedback = new Map(
+      (previousSolutionsRes.data ?? [])
+        .filter((item) => !item.ticket_id || ticketIds.includes(item.ticket_id))
+        .map((item) => [item.ticket_id ?? item.id, item]),
+    );
+
+    return {
+      assignment,
+      engineer: engineerRes.data ?? null,
+      customer: customerRes.data ?? null,
+      system: resolvedSystem,
+      installed_components: (systemAssetsRes.data ?? []).map((item) => ({
+        ...item,
+        product_model: productMap.get(item.product_id) ?? "—",
+      })),
+      ticket: ticketRes.data ?? null,
+      previous_tickets: previousTicketsRes.data ?? [],
+      previous_solutions: (previousTicketsRes.data ?? []).map((ticket) => ({
+        ticket_id: ticket.id,
+        feedback: ticketToFeedback.get(ticket.id) ?? null,
+      })),
+      knowledge_articles: kbRes.data ?? [],
+      attachments: attachmentsRes.data ?? [],
+    };
+  });
+
 export const saveAssignment = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => assignmentSchema.parse(input))
