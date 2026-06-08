@@ -372,6 +372,30 @@ function calculateEffectivenessRate(successCount: number, failCount: number) {
   return Number(((successCount / total) * 100).toFixed(2));
 }
 
+async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, knowledgeBaseId: string) {
+  const { data: feedbackRows, error: feedbackError } = await supabase
+    .from("knowledge_feedback")
+    .select("rating")
+    .eq("knowledge_base_id", knowledgeBaseId);
+  if (feedbackError) throw new Error(`تعذر تحديث إحصائيات تقييم المعرفة: ${feedbackError.message}`);
+
+  const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
+  const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
+  const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
+
+  const { error: updateError } = await supabase
+    .from("knowledge_base")
+    .update({
+      success_count: successCount,
+      fail_count: failCount,
+      effectiveness_rate: effectivenessRate,
+    })
+    .eq("id", knowledgeBaseId);
+  if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
+
+  return { successCount, failCount, effectivenessRate };
+}
+
 function extractImportantWords(text?: string | null) {
   return Array.from(
     new Set(
