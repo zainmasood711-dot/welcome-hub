@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -84,7 +84,7 @@ function CatalogPage() {
     });
   }, [products, brands, categories, search]);
 
-  const submitCategory = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitCategory = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
       await saveCategoryFn({ data: { id: categoryForm.id || undefined, name_ar: categoryForm.name_ar, slug: categoryForm.slug } });
@@ -97,7 +97,7 @@ function CatalogPage() {
     }
   };
 
-  const submitBrand = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitBrand = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
       await saveBrandFn({ data: { id: brandForm.id || undefined, name: brandForm.name, category_id: brandForm.category_id } });
@@ -110,7 +110,7 @@ function CatalogPage() {
     }
   };
 
-  const submitProduct = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitProduct = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
       await saveProductFn({
