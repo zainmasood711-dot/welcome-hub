@@ -1,9 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell } from "@/components/app/app-shell";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAccessContext } from "@/hooks/use-access-context";
@@ -43,6 +44,14 @@ function ReportsPage() {
   return (
     <AppShell roles={roles} title="التقارير التشغيلية">
       <div className="space-y-4">
+        <section className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
+          <Button asChild variant="outline"><Link to="/reports/recurring-issues">الأعطال المتكررة</Link></Button>
+          <Button asChild variant="outline"><Link to="/reports/open-ticket-status">حالات التذاكر المفتوحة</Link></Button>
+          <Button asChild variant="outline"><Link to="/reports/engineer-performance">أداء المهندسين</Link></Button>
+          <Button asChild variant="outline"><Link to="/reports/average-resolution-time">متوسط زمن الحل</Link></Button>
+          <Button asChild variant="outline"><Link to="/reports/problematic-models">المنتجات/الموديلات الإشكالية</Link></Button>
+        </section>
+
         <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <Card><CardHeader><CardTitle className="text-sm">إجمالي التذاكر</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{data?.totalTickets ?? 0}</CardContent></Card>
           <Card><CardHeader><CardTitle className="text-sm">التذاكر غير المحلولة</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{data?.unresolved ?? 0}</CardContent></Card>
