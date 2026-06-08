@@ -780,11 +780,13 @@ export type Database = {
       tickets: {
         Row: {
           affected_product_id: string | null
+          category_id: string | null
           created_at: string
           created_by: string | null
           customer_id: string
           customer_system_id: string | null
           description: string
+          error_code_id: string | null
           error_code_text: string | null
           id: string
           knowledge_base_id: string | null
@@ -799,11 +801,13 @@ export type Database = {
         }
         Insert: {
           affected_product_id?: string | null
+          category_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_id: string
           customer_system_id?: string | null
           description: string
+          error_code_id?: string | null
           error_code_text?: string | null
           id?: string
           knowledge_base_id?: string | null
@@ -818,11 +822,13 @@ export type Database = {
         }
         Update: {
           affected_product_id?: string | null
+          category_id?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string
           customer_system_id?: string | null
           description?: string
+          error_code_id?: string | null
           error_code_text?: string | null
           id?: string
           knowledge_base_id?: string | null
@@ -844,6 +850,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tickets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tickets_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -862,6 +875,13 @@ export type Database = {
             columns: ["customer_system_id"]
             isOneToOne: false
             referencedRelation: "customer_systems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_error_code_id_fkey"
+            columns: ["error_code_id"]
+            isOneToOne: false
+            referencedRelation: "error_codes"
             referencedColumns: ["id"]
           },
           {
