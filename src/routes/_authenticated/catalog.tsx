@@ -5,6 +5,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -13,7 +14,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,6 +59,9 @@ function CatalogPage() {
   const products = data?.products ?? [];
 
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState("all");
 
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [brandOpen, setBrandOpen] = useState(false);
@@ -77,12 +80,17 @@ function CatalogPage() {
 
   const filteredProducts = useMemo(() => {
     return products.filter((item) => {
+      if (categoryFilter !== "all" && item.category_id !== categoryFilter) return false;
+      if (brandFilter !== "all" && item.brand_id !== brandFilter) return false;
+      if (activeFilter === "active" && !item.is_active) return false;
+      if (activeFilter === "inactive" && item.is_active) return false;
+
       const brand = brands.find((b) => b.id === item.brand_id)?.name ?? "";
       const category = categories.find((c) => c.id === item.category_id)?.name_ar ?? "";
       const text = `${item.model} ${brand} ${category}`.toLowerCase();
       return text.includes(search.toLowerCase());
     });
-  }, [products, brands, categories, search]);
+  }, [products, brands, categories, search, categoryFilter, brandFilter, activeFilter]);
 
   const submitCategory = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -112,6 +120,16 @@ function CatalogPage() {
 
   const submitProduct = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!productForm.category_id || !productForm.brand_id) {
+      toast.error("اختر الفئة والعلامة قبل الحفظ");
+      return;
+    }
+    if (productForm.model.trim().length < 2) {
+      toast.error("الموديل قصير جدًا");
+      return;
+    }
+
     try {
       await saveProductFn({
         data: {
@@ -136,9 +154,51 @@ function CatalogPage() {
     <AppShell roles={roles} title="إدارة الفئات والعلامات والمنتجات">
       <Card>
         <CardHeader className="space-y-3">
-          <CardTitle className="text-base">هيكل المنتجات</CardTitle>
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <Input placeholder="بحث بالموديل أو العلامة أو الفئة" value={search} onChange={(e) => setSearch(e.target.value)} className="md:max-w-sm" />
+          <CardTitle className="text-base">المنتجات</CardTitle>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+            <Input placeholder="بحث بالموديل أو العلامة أو الفئة" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="تصفية الفئة" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الفئات</SelectItem>
+                {categories.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name_ar}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={brandFilter} onValueChange={setBrandFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="تصفية العلامة" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل العلامات</SelectItem>
+                {brands
+                  .filter((item) => categoryFilter === "all" || item.category_id === categoryFilter)
+                  .map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <Select value={activeFilter} onValueChange={setActiveFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="الحالة" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الحالات</SelectItem>
+                <SelectItem value="active">نشط</SelectItem>
+                <SelectItem value="inactive">غير نشط</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground">{filteredProducts.length} منتج مطابق</div>
             {canManage && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => setCategoryOpen(true)}>
@@ -168,6 +228,7 @@ function CatalogPage() {
                     <TableHead>الموديل</TableHead>
                     <TableHead>الفئة</TableHead>
                     <TableHead>العلامة</TableHead>
+                    <TableHead>الوصف</TableHead>
                     <TableHead>الحالة</TableHead>
                     {canManage && <TableHead className="text-left">إجراء</TableHead>}
                   </TableRow>
@@ -175,13 +236,13 @@ function CatalogPage() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                         جاري تحميل البيانات...
                       </TableCell>
                     </TableRow>
                   ) : filteredProducts.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
                         لا توجد منتجات مطابقة.
                       </TableCell>
                     </TableRow>
@@ -194,7 +255,8 @@ function CatalogPage() {
                           <TableCell className="font-medium">{item.model}</TableCell>
                           <TableCell>{category}</TableCell>
                           <TableCell>{brand}</TableCell>
-                          <TableCell>{item.is_active ? "نشط" : "غير نشط"}</TableCell>
+                          <TableCell className="max-w-[280px] truncate">{item.description ?? "—"}</TableCell>
+                          <TableCell>{item.is_active ? <Badge>نشط</Badge> : <Badge variant="secondary">غير نشط</Badge>}</TableCell>
                           {canManage && (
                             <TableCell className="text-left">
                               <Button
@@ -359,6 +421,7 @@ function CatalogPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{productForm.id ? "تعديل منتج" : "إضافة منتج"}</DialogTitle>
+            <DialogDescription>نموذج احترافي سريع: اختر الفئة والعلامة والموديل، مع حالة النشاط.</DialogDescription>
           </DialogHeader>
           <form className="space-y-3" onSubmit={submitProduct}>
             <div className="space-y-2">
@@ -401,15 +464,21 @@ function CatalogPage() {
               <Label htmlFor="product-desc">الوصف</Label>
               <Textarea id="product-desc" value={productForm.description} onChange={(e) => setProductForm((p) => ({ ...p, description: e.target.value }))} />
             </div>
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={productForm.is_active}
-                onChange={(e) => setProductForm((p) => ({ ...p, is_active: e.target.checked }))}
-                className="h-4 w-4 rounded border-input"
-              />
-              المنتج نشط
-            </label>
+            <div className="space-y-2">
+              <Label>حالة المنتج</Label>
+              <Select
+                value={productForm.is_active ? "active" : "inactive"}
+                onValueChange={(value) => setProductForm((p) => ({ ...p, is_active: value === "active" }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">نشط</SelectItem>
+                  <SelectItem value="inactive">غير نشط</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex justify-start gap-2">
               <Button type="submit">حفظ</Button>
               <Button type="button" variant="outline" onClick={() => setProductOpen(false)}>
