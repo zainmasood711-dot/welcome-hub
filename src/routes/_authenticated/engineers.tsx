@@ -29,6 +29,7 @@ import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
 import { formatDate } from "@/lib/format";
 import { linkEngineerToProfile, listEngineers, listProfilesForLink, saveEngineer } from "@/lib/phase1.functions";
+import { listAssignments } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/engineers")({
@@ -44,6 +45,7 @@ function EngineersPage() {
   const saveEngineerFn = useServerFn(saveEngineer);
   const profilesFn = useServerFn(listProfilesForLink);
   const linkFn = useServerFn(linkEngineerToProfile);
+  const assignmentsFn = useServerFn(listAssignments);
 
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
@@ -60,12 +62,18 @@ function EngineersPage() {
     enabled: canManage,
   });
 
+  const { data: assignments = [] } = useQuery({
+    queryKey: ["engineer-assignments"],
+    queryFn: () => assignmentsFn(),
+  });
+
   const [search, setSearch] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [selectedEngineerId, setSelectedEngineerId] = useState<string>("");
   const [currentId, setCurrentId] = useState<string | undefined>();
   const [profileId, setProfileId] = useState("");
   const [engineerId, setEngineerId] = useState("");
@@ -91,6 +99,9 @@ function EngineersPage() {
       return bucket.includes(search.toLowerCase());
     });
   }, [engineers, availabilityFilter, typeFilter, search]);
+
+  const selectedEngineer = engineers.find((item) => item.id === selectedEngineerId) ?? filtered[0] ?? null;
+  const selectedEngineerAssignments = assignments.filter((item) => item.engineer_id === selectedEngineer?.id);
 
   const startCreate = () => {
     setCurrentId(undefined);
@@ -240,7 +251,7 @@ function EngineersPage() {
                 </TableRow>
               ) : (
                 filtered.map((item) => (
-                  <TableRow key={item.id}>
+                  <TableRow key={item.id} onClick={() => setSelectedEngineerId(item.id)} className="cursor-pointer">
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.phone ?? "—"}</TableCell>
                     <TableCell>{[item.governorate, item.city].filter(Boolean).join(" - ") || "—"}</TableCell>
@@ -266,6 +277,43 @@ function EngineersPage() {
               )}
             </TableBody>
           </Table>
+        </div>
+
+        <div className="rounded-lg border bg-card p-4">
+          <h3 className="mb-3 text-sm font-semibold">تفاصيل المهندس وسجل المهام</h3>
+          {!selectedEngineer ? (
+            <p className="text-sm text-muted-foreground">اختر مهندسًا لعرض التفاصيل.</p>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded border p-3 text-sm">
+                <p className="font-medium">{selectedEngineer.name}</p>
+                <p className="text-muted-foreground">{selectedEngineer.specialization ?? "بدون تخصص"}</p>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>نوع المهمة</TableHead>
+                    <TableHead>الحالة</TableHead>
+                    <TableHead>الموعد</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {selectedEngineerAssignments.map((assignment) => (
+                    <TableRow key={assignment.id}>
+                      <TableCell>{assignment.assignment_type === "repair_visit" ? "إصلاح" : "تركيب"}</TableCell>
+                      <TableCell>{assignment.status}</TableCell>
+                      <TableCell>{assignment.scheduled_date ? formatDate(assignment.scheduled_date) : "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                  {selectedEngineerAssignments.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="py-6 text-center text-muted-foreground">لا توجد مهام مسجلة لهذا المهندس.</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
       </div>
 

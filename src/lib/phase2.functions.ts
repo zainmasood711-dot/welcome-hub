@@ -178,16 +178,17 @@ export const getPhase2References = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     const { supabase } = context;
-    const [customers, systems, products, engineers, kb, tickets] = await Promise.all([
+    const [customers, systems, products, engineers, kb, tickets, assignments] = await Promise.all([
       supabase.from("customers").select("id, name, phone").order("created_at", { ascending: false }),
       supabase.from("customer_systems").select("id, customer_id, system_name, status").order("created_at", { ascending: false }),
       supabase.from("products").select("id, model").eq("is_active", true).order("model"),
       supabase.from("engineers").select("id, name, availability_status").order("name"),
       supabase.from("knowledge_base").select("id, title, error_code_text").order("created_at", { ascending: false }),
       supabase.from("tickets").select("id, customer_id, status").order("created_at", { ascending: false }),
+      supabase.from("assignments").select("id, ticket_id, status, engineer_id").order("created_at", { ascending: false }),
     ]);
 
-    const errors = [customers.error, systems.error, products.error, engineers.error, kb.error, tickets.error].filter(Boolean);
+    const errors = [customers.error, systems.error, products.error, engineers.error, kb.error, tickets.error, assignments.error].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل بيانات الربط");
 
     return {
@@ -197,6 +198,7 @@ export const getPhase2References = createServerFn({ method: "GET" })
       engineers: engineers.data ?? [],
       knowledge: kb.data ?? [],
       tickets: tickets.data ?? [],
+      assignments: assignments.data ?? [],
     };
   });
 
@@ -264,7 +266,7 @@ export const saveCustomerSystem = createServerFn({ method: "POST" })
     await assertSupportRole(supabase, userId);
 
     if (data.id) {
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("customer_systems")
         .update({
           customer_id: data.customer_id,
@@ -273,21 +275,27 @@ export const saveCustomerSystem = createServerFn({ method: "POST" })
           status: data.status,
           notes: data.notes ?? null,
         })
-        .eq("id", data.id);
+        .eq("id", data.id)
+        .select("id")
+        .single();
       if (error) throw new Error(`تعذر تعديل نظام العميل: ${error.message}`);
-      return { ok: true };
+      return { ok: true, id: updated.id };
     }
 
-    const { error } = await supabase.from("customer_systems").insert({
-      customer_id: data.customer_id,
-      system_name: data.system_name,
-      installation_date: data.installation_date || null,
-      status: data.status,
-      notes: data.notes ?? null,
-      created_by: userId,
-    });
+    const { data: created, error } = await supabase
+      .from("customer_systems")
+      .insert({
+        customer_id: data.customer_id,
+        system_name: data.system_name,
+        installation_date: data.installation_date || null,
+        status: data.status,
+        notes: data.notes ?? null,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(`تعذر إنشاء نظام العميل: ${error.message}`);
-    return { ok: true };
+    return { ok: true, id: created.id };
   });
 
 export const listSystemAssets = createServerFn({ method: "GET" })
@@ -373,7 +381,9 @@ export const saveTicket = createServerFn({ method: "POST" })
       return { ok: true };
     }
 
-    const { error } = await supabase.from("tickets").insert({
+    const { data: created, error } = await supabase
+      .from("tickets")
+      .insert({
       customer_id: data.customer_id,
       customer_system_id: data.customer_system_id ?? null,
       ticket_type: data.ticket_type,
@@ -388,9 +398,11 @@ export const saveTicket = createServerFn({ method: "POST" })
       created_by: userId,
       resolved_by: data.resolved_by ?? null,
       resolved_at: data.resolved_at ?? null,
-    });
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(`تعذر إنشاء التذكرة: ${error.message}`);
-    return { ok: true };
+    return { ok: true, id: created.id };
   });
 
 export const listAssignments = createServerFn({ method: "GET" })
@@ -579,7 +591,42 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
       notes: data.notes ?? null,
     });
     if (error) throw new Error(`تعذر حفظ تقييم المعرفة: ${error.message}`);
+
+    const { data: feedbackRows, error: feedbackError } = await supabase
+      .from("knowledge_feedback")
+      .select("rating")
+      .eq("knowledge_base_id", data.knowledge_base_id);
+    if (feedbackError) throw new Error(`تعذر تحديث إحصائيات تقييم المعرفة: ${feedbackError.message}`);
+
+    const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
+    const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
+    const partialCount = (feedbackRows ?? []).filter((row) => row.rating === "partial").length;
+    const total = successCount + failCount + partialCount;
+    const effectivenessRate = total === 0 ? 0 : Number((((successCount + partialCount * 0.5) / total) * 100).toFixed(2));
+
+    const { error: updateError } = await supabase
+      .from("knowledge_base")
+      .update({
+        success_count: successCount,
+        fail_count: failCount,
+        effectiveness_rate: effectivenessRate,
+      })
+      .eq("id", data.knowledge_base_id);
+    if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
+
     return { ok: true };
+  });
+
+export const listKnowledgeFeedback = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("knowledge_feedback")
+      .select("id, knowledge_base_id, ticket_id, engineer_id, rating, notes, created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(`تعذر تحميل تقييمات قاعدة المعرفة: ${error.message}`);
+    return data ?? [];
   });
 
 export const listNotifications = createServerFn({ method: "GET" })
@@ -646,18 +693,20 @@ export const getOperationsReport = createServerFn({ method: "GET" })
 
     if (roles.includes("manager")) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const [ticketsRes, assignmentsRes, engineersRes] = await Promise.all([
-        supabaseAdmin.from("tickets").select("id, status, priority, error_code_text, created_at"),
+      const [ticketsRes, assignmentsRes, engineersRes, productsRes] = await Promise.all([
+        supabaseAdmin.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
         supabaseAdmin.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
         supabaseAdmin.from("engineers").select("id, name"),
+        supabaseAdmin.from("products").select("id, model"),
       ]);
 
-      const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error].filter(Boolean);
+      const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error].filter(Boolean);
       if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
       const tickets = ticketsRes.data ?? [];
       const assignments = assignmentsRes.data ?? [];
       const engineers = engineersRes.data ?? [];
+      const products = productsRes.data ?? [];
 
       const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
       const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
@@ -683,6 +732,27 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         };
       });
 
+      const monthlyMap = new Map<string, { month: string; newTickets: number; closedTickets: number; completedAssignments: number }>();
+      for (const ticket of tickets) {
+        const month = new Date(ticket.created_at).toISOString().slice(0, 7);
+        const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+        current.newTickets += 1;
+        if (ticket.status === "closed") current.closedTickets += 1;
+        monthlyMap.set(month, current);
+      }
+      for (const assignment of assignments) {
+        const month = new Date(assignment.created_at).toISOString().slice(0, 7);
+        const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+        if (assignment.status === "completed") current.completedAssignments += 1;
+        monthlyMap.set(month, current);
+      }
+
+      const productReliability = products.map((product) => {
+        const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
+        const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
+        return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
+      }).filter((item) => item.totalIssues > 0).sort((a, b) => b.totalIssues - a.totalIssues).slice(0, 10);
+
       return {
         unresolved,
         delayed,
@@ -690,21 +760,25 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         totalAssignments: assignments.length,
         recurringProblems,
         engineerPerformance,
+        monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
+        productReliability,
       };
     }
 
-    const [ticketsRes, assignmentsRes, engineersRes] = await Promise.all([
-      supabase.from("tickets").select("id, status, priority, error_code_text, created_at"),
+    const [ticketsRes, assignmentsRes, engineersRes, productsRes] = await Promise.all([
+      supabase.from("tickets").select("id, status, priority, error_code_text, created_at, affected_product_id"),
       supabase.from("assignments").select("id, engineer_id, status, assignment_type, created_at, submitted_at"),
       supabase.from("engineers").select("id, name"),
+      supabase.from("products").select("id, model"),
     ]);
 
-    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error].filter(Boolean);
+    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
     const tickets = ticketsRes.data ?? [];
     const assignments = assignmentsRes.data ?? [];
     const engineers = engineersRes.data ?? [];
+    const products = productsRes.data ?? [];
 
     const unresolved = tickets.filter((t) => t.status !== "closed" && t.status !== "resolved_remote").length;
     const delayed = assignments.filter((a) => a.status !== "completed" && a.created_at < new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString()).length;
@@ -730,6 +804,27 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       };
     });
 
+    const monthlyMap = new Map<string, { month: string; newTickets: number; closedTickets: number; completedAssignments: number }>();
+    for (const ticket of tickets) {
+      const month = new Date(ticket.created_at).toISOString().slice(0, 7);
+      const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+      current.newTickets += 1;
+      if (ticket.status === "closed") current.closedTickets += 1;
+      monthlyMap.set(month, current);
+    }
+    for (const assignment of assignments) {
+      const month = new Date(assignment.created_at).toISOString().slice(0, 7);
+      const current = monthlyMap.get(month) ?? { month, newTickets: 0, closedTickets: 0, completedAssignments: 0 };
+      if (assignment.status === "completed") current.completedAssignments += 1;
+      monthlyMap.set(month, current);
+    }
+
+    const productReliability = products.map((product) => {
+      const related = tickets.filter((ticket) => ticket.affected_product_id === product.id);
+      const unresolvedCount = related.filter((ticket) => ticket.status !== "closed" && ticket.status !== "resolved_remote").length;
+      return { product_id: product.id, model: product.model, totalIssues: related.length, unresolvedCount };
+    }).filter((item) => item.totalIssues > 0).sort((a, b) => b.totalIssues - a.totalIssues).slice(0, 10);
+
     return {
       unresolved,
       delayed,
@@ -737,5 +832,7 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       totalAssignments: assignments.length,
       recurringProblems,
       engineerPerformance,
+      monthlyTrend: [...monthlyMap.values()].sort((a, b) => a.month.localeCompare(b.month)).slice(-12),
+      productReliability,
     };
   });

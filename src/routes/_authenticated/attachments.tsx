@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
+import { supabase } from "@/integrations/supabase/client";
 import { requireRole } from "@/lib/auth-client";
 import { getPhase2References, listAttachments, saveAttachmentMeta } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
@@ -38,18 +39,67 @@ function AttachmentsPage() {
   const { data: attachments = [] } = useQuery({ queryKey: ["attachments"], queryFn: () => listFn() });
 
   const [open, setOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [form, setForm] = useState({ id: "", attachable_type: "ticket", attachable_id: "", file_type: "document", file_path: "", original_name: "", file_size: "", description: "" });
+
+  const maxBytes = 20 * 1024 * 1024;
+
+  const attachableOptions = useMemo(() => {
+    if (form.attachable_type === "ticket") {
+      return refs?.tickets.map((t) => ({ id: t.id, label: `تذكرة ${t.id.slice(0, 8)} - ${t.status}` })) ?? [];
+    }
+
+    if (form.attachable_type === "assignment") {
+      return refs?.assignments.map((a) => ({ id: a.id, label: `مهمة ${a.id.slice(0, 8)} - ${a.status}` })) ?? [];
+    }
+
+    return refs?.knowledge.map((k) => ({ id: k.id, label: k.title })) ?? [];
+  }, [form.attachable_type, refs?.assignments, refs?.knowledge, refs?.tickets]);
+
+  const onSelectFile = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    if (file.size > maxBytes) {
+      toast.error("حجم الملف يتجاوز 20MB");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedFile(file);
+    setForm((prev) => ({
+      ...prev,
+      original_name: file.name,
+      file_size: String(file.size),
+    }));
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
+      let filePath = form.file_path;
+
+      if (selectedFile) {
+        const safeName = selectedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const generatedPath = `${form.attachable_type}/${form.attachable_id}/${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from("field-attachments").upload(generatedPath, selectedFile, {
+          upsert: false,
+          contentType: selectedFile.type || undefined,
+        });
+        if (uploadError) throw new Error(uploadError.message);
+        filePath = generatedPath;
+      }
+
       await saveFn({
         data: {
           id: form.id || undefined,
           attachable_type: form.attachable_type as "ticket" | "assignment" | "knowledge_base",
           attachable_id: form.attachable_id,
           file_type: form.file_type as "image" | "battery_file" | "document",
-          file_path: form.file_path,
+          file_path: filePath,
           original_name: form.original_name || null,
           file_size: form.file_size ? Number(form.file_size) : null,
           description: form.description || null,
@@ -57,19 +107,13 @@ function AttachmentsPage() {
       });
       toast.success("تم حفظ بيانات المرفق");
       setOpen(false);
+      setSelectedFile(null);
       setForm({ id: "", attachable_type: "ticket", attachable_id: "", file_type: "document", file_path: "", original_name: "", file_size: "", description: "" });
       queryClient.invalidateQueries({ queryKey: ["attachments"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذر حفظ المرفق");
     }
   };
-
-  const attachableOptions =
-    form.attachable_type === "ticket"
-      ? refs?.tickets.map((t) => ({ id: t.id, label: `تذكرة ${t.id.slice(0, 8)} - ${t.status}` })) ?? []
-      : form.attachable_type === "assignment"
-        ? refs?.tickets.map((t) => ({ id: t.id, label: `مهمة مرتبطة بالتذكرة ${t.id.slice(0, 8)}` })) ?? []
-        : refs?.knowledge.map((k) => ({ id: k.id, label: k.title })) ?? [];
 
   return (
     <AppShell roles={roles} title="المرفقات والملفات">
@@ -100,7 +144,12 @@ function AttachmentsPage() {
             <div className="space-y-2"><Label>نوع الارتباط</Label><Select value={form.attachable_type} onValueChange={(v) => setForm((p) => ({ ...p, attachable_type: v, attachable_id: "" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ticket">تذكرة</SelectItem><SelectItem value="assignment">مهمة</SelectItem><SelectItem value="knowledge_base">قاعدة معرفة</SelectItem></SelectContent></Select></div>
             <div className="space-y-2"><Label>العنصر المرتبط</Label><Select value={form.attachable_id} onValueChange={(v) => setForm((p) => ({ ...p, attachable_id: v }))}><SelectTrigger><SelectValue placeholder="اختر عنصر" /></SelectTrigger><SelectContent>{attachableOptions.map((o) => <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>نوع الملف</Label><Select value={form.file_type} onValueChange={(v) => setForm((p) => ({ ...p, file_type: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="document">مستند</SelectItem><SelectItem value="image">صورة</SelectItem><SelectItem value="battery_file">ملف بطارية</SelectItem></SelectContent></Select></div>
-            <div className="space-y-2"><Label>المسار داخل التخزين</Label><Input value={form.file_path} onChange={(e) => setForm((p) => ({ ...p, file_path: e.target.value }))} placeholder="field-attachments/user-id/file.pdf" required /></div>
+            <div className="space-y-2">
+              <Label>رفع ملف</Label>
+              <Input type="file" onChange={onSelectFile} accept=".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.bin" />
+              <p className="text-xs text-muted-foreground">الحد الأقصى 20MB. يمكنك أيضًا إدخال مسار ملف موجود مسبقًا.</p>
+            </div>
+            <div className="space-y-2"><Label>المسار داخل التخزين</Label><Input value={form.file_path} onChange={(e) => setForm((p) => ({ ...p, file_path: e.target.value }))} placeholder="assignment/<id>/file.pdf" /></div>
             <div className="space-y-2"><Label>الاسم الأصلي</Label><Input value={form.original_name} onChange={(e) => setForm((p) => ({ ...p, original_name: e.target.value }))} /></div>
             <div className="space-y-2"><Label>الحجم بالبايت</Label><Input type="number" min={0} value={form.file_size} onChange={(e) => setForm((p) => ({ ...p, file_size: e.target.value }))} /></div>
             <div className="space-y-2"><Label>وصف</Label><Textarea value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} /></div>
