@@ -1433,6 +1433,114 @@ export const submitAssignmentReport = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => assignmentFieldReportWorkflowSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertCanAccessAssignment(supabase, userId, data.assignment_id);
+
+    if (data.status === "completed" && !data.work_done?.trim()) {
+      throw new Error("عند إكمال المهمة يجب كتابة ما تم إنجازه");
+    }
+
+    const { error: updateError } = await supabase
+      .from("assignments")
+      .update({
+        status: data.status,
+        work_done: data.work_done ?? null,
+        difficulties: data.difficulties ?? null,
+        recommendations: data.recommendations ?? null,
+        submitted_at: data.status === "completed" ? new Date().toISOString() : null,
+      })
+      .eq("id", data.assignment_id);
+    if (updateError) throw new Error(`تعذر تحديث حالة المهمة: ${updateError.message}`);
+
+    const attachmentRows = [
+      ...data.photos.map((photo) => {
+        const row = {
+          attachable_type: "assignment" as const,
+          attachable_id: data.assignment_id,
+          file_type: "image" as const,
+          file_path: photo.file_path,
+          original_name: photo.original_name ?? null,
+          file_size: photo.file_size ?? null,
+          description: "صورة ميدانية",
+          uploaded_by: userId,
+        };
+        validateAttachmentInput(row);
+        return row;
+      }),
+      ...(data.battery_log_file
+        ? [
+            {
+              attachable_type: "assignment" as const,
+              attachable_id: data.assignment_id,
+              file_type: "battery_file" as const,
+              file_path: data.battery_log_file.file_path,
+              original_name: data.battery_log_file.original_name ?? null,
+              file_size: data.battery_log_file.file_size ?? null,
+              description: "سجل البطارية",
+              uploaded_by: userId,
+            },
+          ]
+        : []),
+    ];
+
+    if (attachmentRows.length > 0) {
+      const { error: attachError } = await supabase.from("attachments").insert(attachmentRows);
+      if (attachError) throw new Error(`تعذر حفظ مرفقات التقرير: ${attachError.message}`);
+    }
+
+    if (data.knowledge_base_id && data.knowledge_feedback_rating) {
+      const { data: profileRow, error: profileError } = await supabase
+        .from("profiles")
+        .select("engineer_id")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
+      if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+
+      const { data: assignmentRow, error: assignmentReadError } = await supabase
+        .from("assignments")
+        .select("ticket_id")
+        .eq("id", data.assignment_id)
+        .single();
+      if (assignmentReadError) throw new Error(`تعذر تحميل التذكرة المرتبطة للمهمة: ${assignmentReadError.message}`);
+
+      const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
+        knowledge_base_id: data.knowledge_base_id,
+        ticket_id: assignmentRow.ticket_id ?? null,
+        engineer_id: profileRow.engineer_id,
+        rating: data.knowledge_feedback_rating,
+        notes: data.knowledge_feedback_notes ?? null,
+      });
+      if (feedbackError) throw new Error(`تعذر حفظ تقييم المعرفة: ${feedbackError.message}`);
+
+      const { data: feedbackRows, error: feedbackRowsError } = await supabase
+        .from("knowledge_feedback")
+        .select("rating")
+        .eq("knowledge_base_id", data.knowledge_base_id);
+      if (feedbackRowsError) throw new Error(`تعذر تحديث إحصائيات المعرفة: ${feedbackRowsError.message}`);
+
+      const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
+      const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
+      const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
+
+      const { error: kbUpdateError } = await supabase
+        .from("knowledge_base")
+        .update({
+          success_count: successCount,
+          fail_count: failCount,
+          effectiveness_rate: effectivenessRate,
+        })
+        .eq("id", data.knowledge_base_id);
+      if (kbUpdateError) throw new Error(`تعذر تحديث فعالية مادة المعرفة: ${kbUpdateError.message}`);
+    }
+
+    return { ok: true, attachments_count: attachmentRows.length };
+  });
+
 export const listAttachments = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
