@@ -210,6 +210,8 @@ function TicketsPage() {
           id: form.id,
           customer_id: form.customer_id,
           customer_system_id: form.customer_system_id || null,
+          category_id: form.category_id || null,
+          error_code_id: form.error_code_id || null,
           ticket_type: form.ticket_type as "fault" | "inquiry" | "preventive_maintenance" | "new_installation",
           status: form.status as "new" | "in_progress" | "resolved_remote" | "assigned_field" | "closed",
           priority: form.priority as "low" | "medium" | "high" | "critical",
@@ -325,6 +327,42 @@ function TicketsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2"><Label>المنتج المتأثر</Label><Select value={form.affected_product_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, affected_product_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">غير محدد</SelectItem>{(refs?.products ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.model}</SelectItem>)}</SelectContent></Select></div>
               <div className="space-y-2"><Label>مرجع مادة معرفية</Label><Select value={form.knowledge_base_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, knowledge_base_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(refs?.knowledge ?? []).map((k) => <SelectItem key={k.id} value={k.id}>{k.title}</SelectItem>)}</SelectContent></Select></div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>التصنيف</Label>
+                <Select value={form.category_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, category_id: v === "none" ? "" : v }))}>
+                  <SelectTrigger><SelectValue placeholder="اختر تصنيف" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">غير محدد</SelectItem>
+                    {(refs?.productCategories ?? []).map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>{cat.name_ar}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>كود العطل</Label>
+                <Select
+                  value={form.error_code_id || "none"}
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      setForm((p) => ({ ...p, error_code_id: "" }));
+                      return;
+                    }
+                    const selected = (refs?.errorCodes ?? []).find((code) => code.id === v);
+                    setForm((p) => ({ ...p, error_code_id: v, error_code_text: selected?.code ?? p.error_code_text }));
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="اختر كود العطل" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">غير محدد</SelectItem>
+                    {(refs?.errorCodes ?? []).map((code) => (
+                      <SelectItem key={code.id} value={code.id}>{code.code} - {code.description ?? code.category}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-2"><Label>رمز الخطأ النصي</Label><Input value={form.error_code_text} onChange={(e) => setForm((p) => ({ ...p, error_code_text: e.target.value }))} /></div>
             <div className="space-y-2"><Label>نوع الحل</Label><Select value={form.solution_type || "none"} onValueChange={(v) => setForm((p) => ({ ...p, solution_type: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem><SelectItem value="remote">عن بُعد</SelectItem><SelectItem value="field">ميداني</SelectItem><SelectItem value="bring_to_center">إحضار للمركز</SelectItem><SelectItem value="no_fix_needed">لا يتطلب إصلاح</SelectItem></SelectContent></Select></div>
