@@ -46,12 +46,17 @@ function AssignmentsPage() {
   const saveKnowledgeFeedbackContextFn = useServerFn(saveKnowledgeFeedbackFromContext);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
+  const isFieldEngineer = roles.includes("field_engineer");
+  const assignmentsCacheKey = `field-assignments-cache:${accessData?.userId ?? "anon"}`;
 
   const canManage = hasAnyPermission(roles, ["field_assignments.manage", "install_assignments.manage"]);
   const canSubmit = hasAnyPermission(roles, ["field_assignments.read_assigned", "install_assignments.read_assigned"]);
 
   const { data: refs } = useQuery({ queryKey: ["phase2-refs"], queryFn: () => refsFn() });
-  const { data: assignments = [] } = useQuery({ queryKey: ["assignments"], queryFn: () => listFn() });
+  const [isOnline, setIsOnline] = useState(true);
+  const [cachedAssignments, setCachedAssignments] = useState<any[]>([]);
+  const assignmentsQuery = useQuery({ queryKey: ["assignments"], queryFn: () => listFn(), retry: 1 });
+  const assignments = assignmentsQuery.data ?? [];
 
   const [open, setOpen] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string>("");
@@ -71,6 +76,34 @@ function AssignmentsPage() {
   const pageSize = 10;
   const [sourceType, setSourceType] = useState<"ticket" | "system">("ticket");
   const [form, setForm] = useState({ id: "", ticket_id: "", customer_system_id: "", engineer_id: "", assignment_type: "repair_visit", scheduled_date: "", status: "pending", work_done: "", difficulties: "", recommendations: "" });
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const raw = localStorage.getItem(assignmentsCacheKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as any[];
+      if (Array.isArray(parsed)) setCachedAssignments(parsed);
+    } catch {
+    }
+  }, [assignmentsCacheKey]);
+
+  useEffect(() => {
+    if (assignments.length === 0) return;
+    localStorage.setItem(assignmentsCacheKey, JSON.stringify(assignments));
+    setCachedAssignments(assignments);
+  }, [assignments, assignmentsCacheKey]);
 
   const filteredAssignments = useMemo(() => {
     return assignments.filter((assignment) => {
