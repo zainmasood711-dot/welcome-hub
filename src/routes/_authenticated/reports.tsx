@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell } from "@/components/app/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,38 @@ function ReportsPage() {
               <TableHeader><TableRow><TableHead>المهندس</TableHead><TableHead>إجمالي المهام</TableHead><TableHead>مكتملة</TableHead><TableHead>قيد التنفيذ</TableHead></TableRow></TableHeader>
               <TableBody>{(data?.engineerPerformance ?? []).map((item) => <TableRow key={item.engineer_id}><TableCell>{item.engineer_name}</TableCell><TableCell>{item.total}</TableCell><TableCell>{item.completed}</TableCell><TableCell>{item.in_progress}</TableCell></TableRow>)}</TableBody>
             </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">الاتجاه الشهري</CardTitle></CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data?.monthlyTrend ?? []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Line type="monotone" dataKey="newTickets" stroke="var(--color-primary)" name="تذاكر جديدة" />
+                <Line type="monotone" dataKey="closedTickets" stroke="var(--color-secondary)" name="تذاكر مغلقة" />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">ملخص موثوقية المنتجات</CardTitle></CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data?.productReliability ?? []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="model" hide />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Bar dataKey="totalIssues" fill="var(--color-primary)" name="إجمالي الأعطال" />
+                <Bar dataKey="unresolvedCount" fill="var(--color-destructive)" name="غير المحلول" />
+              </BarChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
