@@ -1418,11 +1418,15 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
     const partialCount = feedbackRows.filter((row) => row.rating === "partial").length;
 
     const topLinkedTicket = (ticketsRes.data ?? [])[0];
+    const relatedIssueText = article.issue_description ?? undefined;
+    const relatedProductId = article.product_id ?? topLinkedTicket?.affected_product_id ?? undefined;
+    const relatedErrorCodeText = article.error_code_text ?? topLinkedTicket?.error_code_text ?? undefined;
+    const relatedSystemId = topLinkedTicket?.customer_system_id ?? undefined;
     const { data: relatedRows, error: relatedError } = await supabase.rpc("search_knowledge_ranked", {
-      p_issue_text: article.issue_description ?? undefined,
-      p_affected_product_id: article.product_id ?? topLinkedTicket?.affected_product_id ?? undefined,
-      p_error_code_text: article.error_code_text ?? topLinkedTicket?.error_code_text ?? undefined,
-      p_customer_system_id: topLinkedTicket?.customer_system_id ?? undefined,
+      p_issue_text: relatedIssueText,
+      p_affected_product_id: relatedProductId,
+      p_error_code_text: relatedErrorCodeText,
+      p_customer_system_id: relatedSystemId,
       p_sort_by: "relevance",
       p_limit: 6,
       p_exclude_knowledge_id: article.id,
