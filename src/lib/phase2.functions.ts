@@ -1412,6 +1412,80 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
     }));
   });
 
+export const recordErrorIntelligenceEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => errorIntelligenceEventSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+
+    const created = await insertErrorEvent(supabase, {
+      createdBy: userId,
+      classification: data.classification,
+      severity: data.severity,
+      source: data.source,
+      message: data.message,
+      details: (data.details as Record<string, unknown> | null) ?? {},
+      actionHint: data.action_hint ?? null,
+      sourceRefId: data.source_ref_id ?? null,
+      customerId: data.customer_id ?? null,
+      customerSystemId: data.customer_system_id ?? null,
+      ticketId: data.ticket_id ?? null,
+      assignmentId: data.assignment_id ?? null,
+      attachmentId: data.attachment_id ?? null,
+      knowledgeBaseId: data.knowledge_base_id ?? null,
+      productId: data.product_id ?? null,
+      errorCodeId: data.error_code_id ?? null,
+      errorCodeText: data.error_code_text ?? null,
+    });
+
+    return created;
+  });
+
+export const getErrorResolutionRecommendations = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => errorIntelligenceRecommendationSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+    return recommendResolutionSources(supabase, {
+      customerSystemId: data.customer_system_id ?? null,
+      productId: data.product_id ?? null,
+      errorCodeText: data.error_code_text ?? null,
+      issueText: data.issue_text ?? null,
+      ticketId: data.ticket_id ?? null,
+      assignmentId: data.assignment_id ?? null,
+      limit: data.limit,
+    });
+  });
+
+export const listErrorIntelligenceAlerts = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("error_intelligence_alerts")
+      .select("id, rule_type, severity, status, title, summary, trigger_count, recommendation_context, related_ticket_id, related_assignment_id, related_knowledge_base_id, related_customer_id, related_customer_system_id, related_product_id, related_error_code_text, first_detected_at, last_detected_at, resolved_at, acknowledged_at")
+      .order("last_detected_at", { ascending: false })
+      .limit(80);
+    if (error) throw new Error(`تعذر تحميل تنبيهات ذكاء الأخطاء: ${error.message}`);
+    return data ?? [];
+  });
+
+export const updateErrorIntelligenceAlertStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => updateErrorAlertStatusSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportRole(supabase, userId);
+
+    const patch: Record<string, string | null> = { status: data.status };
+    if (data.status === "acknowledged") patch.acknowledged_at = new Date().toISOString();
+    if (data.status === "resolved") patch.resolved_at = new Date().toISOString();
+
+    const { error } = await supabase.from("error_intelligence_alerts").update(patch as any).eq("id", data.alert_id);
+    if (error) throw new Error(`تعذر تحديث حالة التنبيه: ${error.message}`);
+    return { ok: true };
+  });
+
 export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => createKnowledgeFromTicketSchema.parse(input))
