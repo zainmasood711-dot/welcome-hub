@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
@@ -30,6 +30,28 @@ type TaskItem = {
   priority: TaskPriority;
   due_date: string | null;
   created_at: string;
+};
+
+type RawTask = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  created_at: string;
+};
+
+const toTaskStatus = (status: string): TaskStatus => {
+  if (status === "in_progress") return "in_progress";
+  if (status === "done") return "done";
+  return "todo";
+};
+
+const toTaskPriority = (priority: string): TaskPriority => {
+  if (priority === "low") return "low";
+  if (priority === "high") return "high";
+  return "medium";
 };
 
 export const Route = createFileRoute("/")({
@@ -80,21 +102,27 @@ function Index() {
     },
   });
 
-  useQuery({
-    queryKey: ["auth-changes"],
-    queryFn: async () => {
-      const { data } = supabase.auth.onAuthStateChange(() => {
-        queryClient.invalidateQueries({ queryKey: ["auth-user"] });
-        queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      });
-      return data;
-    },
-    staleTime: Infinity,
-  });
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange(() => {
+      queryClient.invalidateQueries({ queryKey: ["auth-user"] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    });
+
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [queryClient]);
 
   const { data: tasks = [], isLoading } = useQuery<TaskItem[]>({
     queryKey: ["tasks", user?.id],
-    queryFn: () => fetchTasks(),
+    queryFn: async () => {
+      const rows = (await fetchTasks()) as RawTask[];
+      return rows.map((row) => ({
+        ...row,
+        status: toTaskStatus(row.status),
+        priority: toTaskPriority(row.priority),
+      }));
+    },
     enabled: !!user,
   });
 
@@ -108,13 +136,13 @@ function Index() {
       setDueDate("");
       toast.success("Task created");
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create task"),
   });
 
   const updateMutation = useMutation({
     mutationFn: updateTaskFn,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tasks"] }),
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update task"),
   });
 
   const deleteMutation = useMutation({
@@ -123,7 +151,7 @@ function Index() {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       toast.success("Task removed");
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to delete task"),
   });
 
   const filteredTasks = useMemo(() => {
