@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -10,9 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
+import { supabase } from "@/integrations/supabase/client";
 import { requireRole } from "@/lib/auth-client";
 import { getAssignmentDetailsBundle, submitAssignmentFieldReportWorkflow } from "@/lib/phase2.functions";
 
@@ -49,6 +51,39 @@ type QueuedFieldReport = {
   payload: FieldReportPayload;
 };
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function compressImageForMobile(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.size <= 1.2 * 1024 * 1024) {
+    return file;
+  }
+
+  const bitmap = await createImageBitmap(file);
+  const maxWidth = 1600;
+  const scale = Math.min(1, maxWidth / bitmap.width);
+  const targetWidth = Math.max(1, Math.round(bitmap.width * scale));
+  const targetHeight = Math.max(1, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+
+  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+  bitmap.close();
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", 0.8);
+  });
+
+  if (!blob) return file;
+  return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+}
+
 function FieldTaskPage() {
   const { assignmentId } = Route.useParams();
   const queryClient = useQueryClient();
@@ -66,6 +101,10 @@ function FieldTaskPage() {
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [cachedBundle, setCachedBundle] = useState<any | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState<string | null>(null);
+  const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     status: "pending",
     work_done: "",
@@ -213,21 +252,79 @@ function FieldTaskPage() {
     }));
   }, [data?.assignment]);
 
-  const addPhoto = () => {
-    if (!form.photo_path.trim()) return;
-    if (!/\.(jpg|jpeg|png|webp)$/i.test(form.photo_path.trim())) {
-      toast.error("امتداد الصور يجب أن يكون jpg/png/webp");
+  const onPickPhotos = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) {
+      setSelectedImageFiles([]);
       return;
     }
-    setPhotos((prev) => [
-      ...prev,
-      {
-        file_path: form.photo_path.trim(),
-        original_name: form.photo_name.trim() || null,
-        file_size: form.photo_size ? Number(form.photo_size) : null,
-      },
-    ]);
-    setForm((prev) => ({ ...prev, photo_path: "", photo_name: "", photo_size: "" }));
+
+    const invalidExt = files.find((file) => !/\.(jpg|jpeg|png|webp)$/i.test(file.name));
+    if (invalidExt) {
+      toast.error("صيغة الصورة غير مدعومة. استخدم jpg أو png أو webp");
+      event.target.value = "";
+      return;
+    }
+
+    const invalidSize = files.find((file) => file.size > 15 * 1024 * 1024);
+    if (invalidSize) {
+      toast.error("حجم الصورة كبير جدًا. الحد الأقصى 15MB قبل الضغط");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedImageFiles(files);
+  };
+
+  const uploadSelectedPhotos = async () => {
+    if (selectedImageFiles.length === 0) return [] as Array<{ file_path: string; original_name: string | null; file_size: number | null }>;
+
+    const uploaded: Array<{ file_path: string; original_name: string | null; file_size: number | null }> = [];
+    setIsUploadingPhotos(true);
+    setUploadProgress(3);
+    setUploadStatusText("جاري تجهيز الصور للرفع...");
+
+    for (let index = 0; index < selectedImageFiles.length; index += 1) {
+      const originalFile = selectedImageFiles[index];
+      const compressedFile = await compressImageForMobile(originalFile);
+      if (compressedFile.size > MAX_IMAGE_BYTES) {
+        throw new Error(`الصورة ${originalFile.name} ما زالت كبيرة بعد الضغط (الحد 5MB)`);
+      }
+
+      const safeName = compressedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const targetPath = `assignment/${assignmentId}/photos/${Date.now()}-${index + 1}-${safeName}`;
+
+      let uploadedOk = false;
+      let attempts = 0;
+      while (!uploadedOk && attempts < 3) {
+        attempts += 1;
+        const { error } = await supabase.storage.from("field-attachments").upload(targetPath, compressedFile, {
+          upsert: false,
+          contentType: compressedFile.type || undefined,
+        });
+
+        if (!error) {
+          uploadedOk = true;
+          uploaded.push({
+            file_path: targetPath,
+            original_name: originalFile.name,
+            file_size: compressedFile.size,
+          });
+          const completedRatio = (index + 1) / selectedImageFiles.length;
+          setUploadProgress(Math.round(5 + completedRatio * 95));
+          setUploadStatusText(`تم رفع ${index + 1} من ${selectedImageFiles.length} صورة`);
+        } else if (attempts < 3) {
+          setUploadStatusText(`تعثر رفع ${originalFile.name}، إعادة المحاولة (${attempts}/2)...`);
+          await wait(700 * attempts);
+        } else {
+          throw new Error(`فشل رفع ${originalFile.name} بعد 3 محاولات`);
+        }
+      }
+    }
+
+    setUploadProgress(100);
+    setUploadStatusText("اكتمل رفع الصور");
+    return uploaded;
   };
 
   const canSubmit = useMemo(() => {
@@ -265,27 +362,47 @@ function FieldTaskPage() {
       }
       return;
     }
-    const payload = buildPayload();
+    let payload = buildPayload();
 
     if (!isOnline) {
+      if (selectedImageFiles.length > 0) {
+        toast.error("رفع الصور يحتاج اتصالاً بالإنترنت، ثم أعد المحاولة");
+        return;
+      }
       enqueueReport(payload);
       return;
     }
 
     try {
+      if (selectedImageFiles.length > 0) {
+        const uploadedPhotos = await uploadSelectedPhotos();
+        payload = {
+          ...payload,
+          photos: [...photos, ...uploadedPhotos],
+        };
+      }
+
       await submitFn({ data: payload });
       toast.success("تم إرسال التقرير الميداني بنجاح");
       localStorage.removeItem(draftKey);
+      setPhotos(payload.photos);
+      setSelectedImageFiles([]);
+      setUploadProgress(0);
+      setUploadStatusText(null);
       queryClient.invalidateQueries({ queryKey: ["field-task", assignmentId] });
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
     } catch (error) {
       const message = error instanceof Error ? error.message : "تعذر إرسال التقرير";
       setSubmitError(message);
-      if (!navigator.onLine || /network|failed|timeout/i.test(message)) {
+      if (selectedImageFiles.length > 0) {
+        toast.error(`${message} - لم يتم إرسال التقرير لأن رفع الصور لم يكتمل. حاول مرة أخرى.`);
+      } else if (!navigator.onLine || /network|failed|timeout/i.test(message)) {
         enqueueReport(payload);
       } else {
         toast.error(message);
       }
+    } finally {
+      setIsUploadingPhotos(false);
     }
   };
 
@@ -352,10 +469,20 @@ function FieldTaskPage() {
           <CardHeader className="pb-2"><CardTitle className="text-sm">رفع الصور وملف البطارية</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-2">
-              <Input placeholder="مسار الصورة (example: mobile/photo-1.jpg)" value={form.photo_path} onChange={(e) => setForm((p) => ({ ...p, photo_path: e.target.value }))} />
-              <Input placeholder="اسم الصورة" value={form.photo_name} onChange={(e) => setForm((p) => ({ ...p, photo_name: e.target.value }))} />
-              <Input placeholder="حجم الصورة بالبايت" value={form.photo_size} onChange={(e) => setForm((p) => ({ ...p, photo_size: e.target.value }))} />
-              <Button type="button" variant="outline" onClick={addPhoto}>إضافة صورة</Button>
+              <Label htmlFor="field-photos-upload">صور من الجهاز (يتم ضغطها تلقائيًا للموبايل)</Label>
+              <Input id="field-photos-upload" type="file" accept=".jpg,.jpeg,.png,.webp" multiple onChange={onPickPhotos} />
+              {selectedImageFiles.length > 0 && (
+                <p className="text-xs text-muted-foreground">تم اختيار {selectedImageFiles.length} صورة، وسيتم رفعها قبل إرسال التقرير.</p>
+              )}
+              {isUploadingPhotos && (
+                <div className="space-y-2 rounded border p-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span>{uploadStatusText ?? "جاري رفع الصور..."}</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <Progress value={uploadProgress} />
+                </div>
+              )}
             </div>
             {photos.map((photo, idx) => (
               <div key={`${photo.file_path}-${idx}`} className="rounded border p-2 text-xs flex items-center justify-between">
@@ -381,7 +508,7 @@ function FieldTaskPage() {
         </Card>
 
         <div className="sticky bottom-2 z-10 rounded-lg border bg-card/95 p-2 backdrop-blur">
-          <Button className="w-full" onClick={submit} disabled={!canSubmit || isSyncingQueue}>إرسال التقرير النهائي</Button>
+          <Button className="w-full" onClick={submit} disabled={!canSubmit || isSyncingQueue || isUploadingPhotos}>{isUploadingPhotos ? "جاري رفع الصور..." : "إرسال التقرير النهائي"}</Button>
           {!isOnline && <p className="mt-2 text-center text-xs text-muted-foreground">في وضع عدم الاتصال: سيتم حفظ الطلب وإرساله تلقائيًا لاحقًا.</p>}
         </div>
       </div>
