@@ -483,7 +483,7 @@ function TicketsPage() {
                           setForm((prev) => ({
                             ...prev,
                             knowledge_base_id: item.id,
-                            remote_solution_notes: prev.remote_solution_notes || item.solution_steps,
+                            remote_solution_notes: prev.remote_solution_notes || item.solution_steps || "",
                             solution_type: prev.solution_type || "remote",
                           }))
                         }
