@@ -1216,8 +1216,9 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     await assertSupportRole(supabase, userId);
 
-    let customerId = data.customer_id ?? null;
-    if (!customerId && data.quick_customer) {
+    try {
+      let customerId = data.customer_id ?? null;
+      if (!customerId && data.quick_customer) {
       const { data: createdCustomer, error: customerError } = await supabase
         .from("customers")
         .insert({
@@ -1377,14 +1378,43 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
       if (updateTicketKbError) throw new Error(`تم إنشاء مادة المعرفة لكن تعذر ربطها بالتذكرة: ${updateTicketKbError.message}`);
     }
 
-    return {
-      ok: true,
-      ticket_id: createdTicket.id,
-      customer_id: customerId,
-      assignment_id: assignmentId,
-      knowledge_id: createdKnowledgeId,
-      attachments_count: data.attachment_files.length,
-    };
+      return {
+        ok: true,
+        ticket_id: createdTicket.id,
+        customer_id: customerId,
+        assignment_id: assignmentId,
+        knowledge_id: createdKnowledgeId,
+        attachments_count: data.attachment_files.length,
+      };
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "workflow failure";
+      const mapped = classifyRuntimeError(raw);
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: "workflow_error",
+        severity: mapped.severity,
+        source: "ticket_workflow",
+        message: raw,
+        details: {
+          ticket_type: data.ticket_type,
+          priority: data.priority,
+          field_visit_needed: data.field_visit_needed,
+          create_knowledge_entry: data.create_knowledge_entry,
+          affected_product_id: data.affected_product_id,
+          error_code_id: data.error_code_id,
+          error_code_text: data.error_code_text,
+          customer_system_id: data.customer_system_id,
+        },
+        actionHint: mapped.actionHint,
+        customerId: data.customer_id ?? null,
+        customerSystemId: data.customer_system_id ?? null,
+        productId: data.affected_product_id ?? null,
+        errorCodeId: data.error_code_id ?? null,
+        errorCodeText: data.error_code_text ?? null,
+      });
+
+      throw error;
+    }
   });
 
 export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
