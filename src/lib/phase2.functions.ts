@@ -6,6 +6,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
+type ErrorIntelligenceClassification = Database["public"]["Enums"]["error_intelligence_classification"];
+type ErrorIntelligenceSeverity = Database["public"]["Enums"]["error_intelligence_severity"];
+type ErrorIntelligenceSource = Database["public"]["Enums"]["error_intelligence_source"];
 
 const customerSchema = z.object({
   id: z.string().uuid().optional(),
@@ -301,6 +304,49 @@ const knowledgeFeedbackFromContextSchema = z.object({
   assignment_id: z.string().uuid().optional().nullable(),
 });
 
+const errorIntelligenceEventSchema = z.object({
+  classification: z.enum([
+    "application_error",
+    "validation_error",
+    "workflow_error",
+    "sync_error",
+    "upload_error",
+    "data_consistency_issue",
+    "repeated_operational_issue",
+    "low_effectiveness_knowledge_issue",
+  ]),
+  severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  source: z.enum(["runtime", "ticket_workflow", "assignment_workflow", "attachment_workflow", "offline_sync", "knowledge_workflow", "reporting"]),
+  message: z.string().trim().min(3).max(1500),
+  details: z.record(z.string(), z.unknown()).optional().nullable(),
+  action_hint: z.string().trim().max(1000).optional().nullable(),
+  source_ref_id: z.string().uuid().optional().nullable(),
+  customer_id: z.string().uuid().optional().nullable(),
+  customer_system_id: z.string().uuid().optional().nullable(),
+  ticket_id: z.string().uuid().optional().nullable(),
+  assignment_id: z.string().uuid().optional().nullable(),
+  attachment_id: z.string().uuid().optional().nullable(),
+  knowledge_base_id: z.string().uuid().optional().nullable(),
+  product_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+});
+
+const errorIntelligenceRecommendationSchema = z.object({
+  customer_system_id: z.string().uuid().optional().nullable(),
+  product_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+  issue_text: z.string().trim().max(2000).optional().nullable(),
+  ticket_id: z.string().uuid().optional().nullable(),
+  assignment_id: z.string().uuid().optional().nullable(),
+  limit: z.number().int().min(1).max(10).default(5),
+});
+
+const updateErrorAlertStatusSchema = z.object({
+  alert_id: z.string().uuid(),
+  status: z.enum(["open", "acknowledged", "resolved", "ignored"]),
+});
+
 const imageExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
 const documentExtensions = new Set(["pdf", "xls", "xlsx", "csv", "txt"]);
 const batteryExtensions = new Set(["log", "csv", "txt"]);
@@ -366,6 +412,78 @@ function validateAttachmentInput(data: z.infer<typeof attachmentSchema>) {
 
 function normalizeText(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
+}
+
+function normalizeErrorSignature(input: {
+  classification: ErrorIntelligenceClassification;
+  message: string;
+  errorCodeText?: string | null;
+}) {
+  const parts = [
+    input.classification,
+    normalizeText(input.errorCodeText) || "no-code",
+    normalizeText(input.message),
+  ];
+
+  return parts
+    .join("-")
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]+/gu, "")
+    .slice(0, 220);
+}
+
+function classifyRuntimeError(message: string): {
+  classification: ErrorIntelligenceClassification;
+  severity: ErrorIntelligenceSeverity;
+  actionHint: string;
+} {
+  const value = normalizeText(message);
+
+  if (/validation|required|invalid|صيغة|مطلوب|غير صالح/.test(value)) {
+    return {
+      classification: "validation_error",
+      severity: "medium",
+      actionHint: "تحقق من المدخلات الإلزامية وصيغ الحقول قبل إعادة التنفيذ.",
+    };
+  }
+
+  if (/upload|storage|رفع|file|bucket/.test(value)) {
+    return {
+      classification: "upload_error",
+      severity: "high",
+      actionHint: "تحقق من الاتصال ومسار التخزين وصلاحيات رفع الملفات.",
+    };
+  }
+
+  if (/sync|offline|network|timeout|مزامنة|انقطاع/.test(value)) {
+    return {
+      classification: "sync_error",
+      severity: "high",
+      actionHint: "راجع حالة الاتصال والطابور المؤجل وأعد المحاولة تلقائيًا.",
+    };
+  }
+
+  if (/workflow|transition|state|permission|صلاحية|انتقال/.test(value)) {
+    return {
+      classification: "workflow_error",
+      severity: "high",
+      actionHint: "راجع شروط الانتقال والصلاحيات وسياق الحالة الحالية قبل التنفيذ.",
+    };
+  }
+
+  if (/foreign key|constraint|inconsistent|orphan|مرجعي|غير متسق/.test(value)) {
+    return {
+      classification: "data_consistency_issue",
+      severity: "high",
+      actionHint: "تحقق من سلامة الربط بين السجلات وتناسق المفاتيح المرجعية.",
+    };
+  }
+
+  return {
+    classification: "application_error",
+    severity: "medium",
+    actionHint: "راجع سجل التنفيذ الكامل وسياق العملية قبل إعادة المحاولة.",
+  };
 }
 
 function calculateEffectivenessRate(successCount: number, failCount: number) {
@@ -493,6 +611,13 @@ async function assertSupportRole(supabase: SupabaseClient<Database>, userId: str
   }
 }
 
+async function assertSupportOrManagerRole(supabase: SupabaseClient<Database>, userId: string) {
+  const roles = await getUserRoles(supabase, userId);
+  if (!roles.includes("support_engineer") && !roles.includes("manager")) {
+    throw new Error("ليس لديك صلاحية لتنفيذ هذا الإجراء");
+  }
+}
+
 async function assertCanAccessAssignment(supabase: SupabaseClient<Database>, userId: string, assignmentId: string) {
   const roles = await getUserRoles(supabase, userId);
   const { data: assignment, error } = await supabase
@@ -517,6 +642,131 @@ async function assertCanAccessAssignment(supabase: SupabaseClient<Database>, use
   }
 
   return assignment;
+}
+
+async function insertErrorEvent(
+  supabase: SupabaseClient<Database>,
+  params: {
+    createdBy: string;
+    classification: ErrorIntelligenceClassification;
+    severity: ErrorIntelligenceSeverity;
+    source: ErrorIntelligenceSource;
+    message: string;
+    details?: Record<string, unknown> | null;
+    actionHint?: string | null;
+    sourceRefId?: string | null;
+    customerId?: string | null;
+    customerSystemId?: string | null;
+    ticketId?: string | null;
+    assignmentId?: string | null;
+    attachmentId?: string | null;
+    knowledgeBaseId?: string | null;
+    productId?: string | null;
+    errorCodeId?: string | null;
+    errorCodeText?: string | null;
+  },
+) {
+  const normalizedErrorSignature = normalizeErrorSignature({
+    classification: params.classification,
+    message: params.message,
+    errorCodeText: params.errorCodeText,
+  });
+
+  const { data, error } = await supabase
+    .from("error_intelligence_events")
+    .insert({
+      classification: params.classification,
+      severity: params.severity,
+      source: params.source,
+      message: params.message,
+      normalized_error_signature: normalizedErrorSignature,
+      details: (params.details ?? {}) as any,
+      action_hint: params.actionHint ?? null,
+      source_ref_id: params.sourceRefId ?? null,
+      customer_id: params.customerId ?? null,
+      customer_system_id: params.customerSystemId ?? null,
+      ticket_id: params.ticketId ?? null,
+      assignment_id: params.assignmentId ?? null,
+      attachment_id: params.attachmentId ?? null,
+      knowledge_base_id: params.knowledgeBaseId ?? null,
+      product_id: params.productId ?? null,
+      error_code_id: params.errorCodeId ?? null,
+      error_code_text: params.errorCodeText ?? null,
+      created_by: params.createdBy,
+    } as any)
+    .select("id, classification, severity, source, message, normalized_error_signature, occurred_at")
+    .single();
+
+  if (error) {
+    throw new Error(`تعذر تسجيل حدث الخطأ الذكي: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function recommendResolutionSources(
+  supabase: SupabaseClient<Database>,
+  params: {
+    customerSystemId?: string | null;
+    productId?: string | null;
+    errorCodeText?: string | null;
+    issueText?: string | null;
+    ticketId?: string | null;
+    assignmentId?: string | null;
+    limit: number;
+  },
+) {
+  const normalizedCode = normalizeText(params.errorCodeText);
+
+  const { data: knowledgeRows, error: knowledgeError } = await supabase.rpc("search_knowledge_ranked", {
+    p_issue_text: params.issueText ?? undefined,
+    p_affected_product_id: params.productId ?? undefined,
+    p_error_code_text: normalizedCode || undefined,
+    p_customer_system_id: params.customerSystemId ?? undefined,
+    p_sort_by: "relevance",
+    p_limit: params.limit,
+  });
+  if (knowledgeError) throw new Error(`تعذر جلب توصيات المعرفة: ${knowledgeError.message}`);
+
+  let ticketQuery = supabase
+    .from("tickets")
+    .select("id, description, status, solution_type, remote_solution_notes, error_code_text, affected_product_id, customer_system_id, created_at, resolved_at, knowledge_base_id")
+    .order("created_at", { ascending: false })
+    .limit(Math.max(params.limit * 2, 10));
+
+  if (params.customerSystemId) ticketQuery = ticketQuery.eq("customer_system_id", params.customerSystemId);
+  if (params.productId) ticketQuery = ticketQuery.eq("affected_product_id", params.productId);
+  if (normalizedCode) ticketQuery = ticketQuery.ilike("error_code_text", normalizedCode);
+  const { data: ticketRows, error: ticketError } = await ticketQuery;
+  if (ticketError) throw new Error(`تعذر جلب التذاكر المشابهة: ${ticketError.message}`);
+
+  const relatedTickets = (ticketRows ?? []).slice(0, params.limit).map((ticket) => ({
+    id: ticket.id,
+    status: ticket.status,
+    solution_type: ticket.solution_type,
+    error_code_text: ticket.error_code_text,
+    summary: (ticket.description ?? "").slice(0, 180),
+    resolved_at: ticket.resolved_at,
+    created_at: ticket.created_at,
+    knowledge_base_id: ticket.knowledge_base_id,
+  }));
+
+  const successfulRecent = (ticketRows ?? [])
+    .filter((ticket) => (ticket.status === "closed" || ticket.status === "resolved_remote") && !!ticket.resolved_at)
+    .slice(0, params.limit)
+    .map((ticket) => ({
+      ticket_id: ticket.id,
+      solution_type: ticket.solution_type,
+      remote_solution_notes: ticket.remote_solution_notes,
+      resolved_at: ticket.resolved_at,
+      knowledge_base_id: ticket.knowledge_base_id,
+    }));
+
+  return {
+    knowledge: knowledgeRows ?? [],
+    related_tickets: relatedTickets,
+    recent_successful_resolutions: successfulRecent,
+  };
 }
 
 async function generateKnowledgeKeywords(
@@ -973,8 +1223,9 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     await assertSupportRole(supabase, userId);
 
-    let customerId = data.customer_id ?? null;
-    if (!customerId && data.quick_customer) {
+    try {
+      let customerId = data.customer_id ?? null;
+      if (!customerId && data.quick_customer) {
       const { data: createdCustomer, error: customerError } = await supabase
         .from("customers")
         .insert({
@@ -1134,14 +1385,79 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
       if (updateTicketKbError) throw new Error(`تم إنشاء مادة المعرفة لكن تعذر ربطها بالتذكرة: ${updateTicketKbError.message}`);
     }
 
-    return {
-      ok: true,
-      ticket_id: createdTicket.id,
-      customer_id: customerId,
-      assignment_id: assignmentId,
-      knowledge_id: createdKnowledgeId,
-      attachments_count: data.attachment_files.length,
-    };
+      if (data.customer_system_id || errorCodeText || data.affected_product_id) {
+        let recurringQuery = supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .neq("id", createdTicket.id)
+          .gte("created_at", new Date(Date.now() - 1000 * 60 * 60 * 24 * 21).toISOString());
+
+        if (data.customer_system_id) recurringQuery = recurringQuery.eq("customer_system_id", data.customer_system_id);
+        if (data.affected_product_id) recurringQuery = recurringQuery.eq("affected_product_id", data.affected_product_id);
+        if (errorCodeText) recurringQuery = recurringQuery.ilike("error_code_text", errorCodeText);
+
+        const { count: recurringCount, error: recurringError } = await recurringQuery;
+        if (!recurringError && (recurringCount ?? 0) >= 2) {
+          await insertErrorEvent(supabase, {
+            createdBy: userId,
+            classification: "repeated_operational_issue",
+            severity: (recurringCount ?? 0) >= 4 ? "high" : "medium",
+            source: "ticket_workflow",
+            message: "نمط تشغيلي متكرر لنفس سياق العطل",
+            details: {
+              recurring_count_21d: recurringCount,
+              customer_system_id: data.customer_system_id,
+              affected_product_id: data.affected_product_id,
+              error_code_text: errorCodeText,
+            },
+            actionHint: "راجع الحلول السابقة المرتبطة بنفس السياق وأنشئ إجراء تصحيحي موحّد.",
+            customerId,
+            customerSystemId: data.customer_system_id ?? null,
+            ticketId: createdTicket.id,
+            productId: data.affected_product_id ?? null,
+            errorCodeId: data.error_code_id ?? null,
+            errorCodeText: errorCodeText ?? null,
+          });
+        }
+      }
+
+      return {
+        ok: true,
+        ticket_id: createdTicket.id,
+        customer_id: customerId,
+        assignment_id: assignmentId,
+        knowledge_id: createdKnowledgeId,
+        attachments_count: data.attachment_files.length,
+      };
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "workflow failure";
+      const mapped = classifyRuntimeError(raw);
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: "workflow_error",
+        severity: mapped.severity,
+        source: "ticket_workflow",
+        message: raw,
+        details: {
+          ticket_type: data.ticket_type,
+          priority: data.priority,
+          field_visit_needed: data.field_visit_needed,
+          create_knowledge_entry: data.create_knowledge_entry,
+          affected_product_id: data.affected_product_id,
+          error_code_id: data.error_code_id,
+          error_code_text: data.error_code_text,
+          customer_system_id: data.customer_system_id,
+        },
+        actionHint: mapped.actionHint,
+        customerId: data.customer_id ?? null,
+        customerSystemId: data.customer_system_id ?? null,
+        productId: data.affected_product_id ?? null,
+        errorCodeId: data.error_code_id ?? null,
+        errorCodeText: data.error_code_text ?? null,
+      });
+
+      throw error;
+    }
   });
 
 export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
@@ -1167,6 +1483,80 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
       ...item,
       match_reason: item.match_reason || "تطابق سياقي",
     }));
+  });
+
+export const recordErrorIntelligenceEvent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => errorIntelligenceEventSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+
+    const created = await insertErrorEvent(supabase, {
+      createdBy: userId,
+      classification: data.classification,
+      severity: data.severity,
+      source: data.source,
+      message: data.message,
+      details: (data.details as Record<string, unknown> | null) ?? {},
+      actionHint: data.action_hint ?? null,
+      sourceRefId: data.source_ref_id ?? null,
+      customerId: data.customer_id ?? null,
+      customerSystemId: data.customer_system_id ?? null,
+      ticketId: data.ticket_id ?? null,
+      assignmentId: data.assignment_id ?? null,
+      attachmentId: data.attachment_id ?? null,
+      knowledgeBaseId: data.knowledge_base_id ?? null,
+      productId: data.product_id ?? null,
+      errorCodeId: data.error_code_id ?? null,
+      errorCodeText: data.error_code_text ?? null,
+    });
+
+    return created;
+  });
+
+export const getErrorResolutionRecommendations = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => errorIntelligenceRecommendationSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase } = context;
+    return recommendResolutionSources(supabase, {
+      customerSystemId: data.customer_system_id ?? null,
+      productId: data.product_id ?? null,
+      errorCodeText: data.error_code_text ?? null,
+      issueText: data.issue_text ?? null,
+      ticketId: data.ticket_id ?? null,
+      assignmentId: data.assignment_id ?? null,
+      limit: data.limit,
+    });
+  });
+
+export const listErrorIntelligenceAlerts = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("error_intelligence_alerts")
+      .select("id, rule_type, severity, status, title, summary, trigger_count, recommendation_context, related_ticket_id, related_assignment_id, related_knowledge_base_id, related_customer_id, related_customer_system_id, related_product_id, related_error_code_text, first_detected_at, last_detected_at, resolved_at, acknowledged_at")
+      .order("last_detected_at", { ascending: false })
+      .limit(80);
+    if (error) throw new Error(`تعذر تحميل تنبيهات ذكاء الأخطاء: ${error.message}`);
+    return data ?? [];
+  });
+
+export const updateErrorIntelligenceAlertStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => updateErrorAlertStatusSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportOrManagerRole(supabase, userId);
+
+    const patch: Record<string, string | null> = { status: data.status };
+    if (data.status === "acknowledged") patch.acknowledged_at = new Date().toISOString();
+    if (data.status === "resolved") patch.resolved_at = new Date().toISOString();
+
+    const { error } = await supabase.from("error_intelligence_alerts").update(patch as any).eq("id", data.alert_id);
+    if (error) throw new Error(`تعذر تحديث حالة التنبيه: ${error.message}`);
+    return { ok: true };
   });
 
 export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" })
@@ -1714,25 +2104,26 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
   .inputValidator((input) => assignmentFieldReportWorkflowSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const assignmentAccess = await assertCanAccessAssignment(supabase, userId, data.assignment_id);
+    try {
+      const assignmentAccess = await assertCanAccessAssignment(supabase, userId, data.assignment_id);
 
-    if (data.status === "completed" && !data.work_done?.trim()) {
-      throw new Error("عند إكمال المهمة يجب كتابة ما تم إنجازه");
-    }
+      if (data.status === "completed" && !data.work_done?.trim()) {
+        throw new Error("عند إكمال المهمة يجب كتابة ما تم إنجازه");
+      }
 
-    const { error: updateError } = await supabase
-      .from("assignments")
-      .update({
-        status: data.status,
-        work_done: data.work_done ?? null,
-        difficulties: data.difficulties ?? null,
-        recommendations: data.recommendations ?? null,
-        submitted_at: data.status === "completed" ? new Date().toISOString() : null,
-      })
-      .eq("id", data.assignment_id);
-    if (updateError) throw new Error(`تعذر تحديث حالة المهمة: ${updateError.message}`);
+      const { error: updateError } = await supabase
+        .from("assignments")
+        .update({
+          status: data.status,
+          work_done: data.work_done ?? null,
+          difficulties: data.difficulties ?? null,
+          recommendations: data.recommendations ?? null,
+          submitted_at: data.status === "completed" ? new Date().toISOString() : null,
+        })
+        .eq("id", data.assignment_id);
+      if (updateError) throw new Error(`تعذر تحديث حالة المهمة: ${updateError.message}`);
 
-    const attachmentRows = [
+      const attachmentRows = [
       ...data.photos.map((photo) => {
         const row = {
           attachable_type: "assignment" as const,
@@ -1763,57 +2154,79 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
         : []),
     ];
 
-    if (attachmentRows.length > 0) {
-      await assertStoragePathsExist(
-        supabase,
-        attachmentRows.map((item) => item.file_path),
-      );
+      if (attachmentRows.length > 0) {
+        await assertStoragePathsExist(
+          supabase,
+          attachmentRows.map((item) => item.file_path),
+        );
 
-      const { error: attachError } = await supabase.from("attachments").insert(attachmentRows);
-      if (attachError) throw new Error(`تعذر حفظ مرفقات التقرير: ${attachError.message}`);
-    }
-
-    if (assignmentAccess.ticket_id) {
-      const nextTicketStatus = mapAssignmentStatusToTicketStatus(data.status);
-
-      const { error: ticketUpdateError } = await supabase
-        .from("tickets")
-        .update({ status: nextTicketStatus, solution_type: "field" })
-        .eq("id", assignmentAccess.ticket_id);
-      if (ticketUpdateError) {
-        throw new Error(`تم تحديث المهمة لكن تعذر مزامنة حالة التذكرة: ${ticketUpdateError.message}`);
+        const { error: attachError } = await supabase.from("attachments").insert(attachmentRows);
+        if (attachError) throw new Error(`تعذر حفظ مرفقات التقرير: ${attachError.message}`);
       }
-    }
 
-    if (data.knowledge_base_id && data.knowledge_feedback_rating) {
-      const { data: profileRow, error: profileError } = await supabase
-        .from("profiles")
-        .select("engineer_id")
-        .eq("id", userId)
-        .maybeSingle();
-      if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
-      if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+      if (assignmentAccess.ticket_id) {
+        const nextTicketStatus = mapAssignmentStatusToTicketStatus(data.status);
 
-      const { data: assignmentRow, error: assignmentReadError } = await supabase
-        .from("assignments")
-        .select("ticket_id")
-        .eq("id", data.assignment_id)
-        .single();
-      if (assignmentReadError) throw new Error(`تعذر تحميل التذكرة المرتبطة للمهمة: ${assignmentReadError.message}`);
+        const { error: ticketUpdateError } = await supabase
+          .from("tickets")
+          .update({ status: nextTicketStatus, solution_type: "field" })
+          .eq("id", assignmentAccess.ticket_id);
+        if (ticketUpdateError) {
+          throw new Error(`تم تحديث المهمة لكن تعذر مزامنة حالة التذكرة: ${ticketUpdateError.message}`);
+        }
+      }
 
-      const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
-        knowledge_base_id: data.knowledge_base_id,
-        ticket_id: assignmentRow.ticket_id ?? null,
-        engineer_id: profileRow.engineer_id,
-        rating: data.knowledge_feedback_rating,
-        notes: data.knowledge_feedback_notes ?? null,
+      if (data.knowledge_base_id && data.knowledge_feedback_rating) {
+        const { data: profileRow, error: profileError } = await supabase
+          .from("profiles")
+          .select("engineer_id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
+        if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+
+        const { data: assignmentRow, error: assignmentReadError } = await supabase
+          .from("assignments")
+          .select("ticket_id")
+          .eq("id", data.assignment_id)
+          .single();
+        if (assignmentReadError) throw new Error(`تعذر تحميل التذكرة المرتبطة للمهمة: ${assignmentReadError.message}`);
+
+        const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
+          knowledge_base_id: data.knowledge_base_id,
+          ticket_id: assignmentRow.ticket_id ?? null,
+          engineer_id: profileRow.engineer_id,
+          rating: data.knowledge_feedback_rating,
+          notes: data.knowledge_feedback_notes ?? null,
+        });
+        if (feedbackError) throw new Error(`تعذر حفظ تقييم المعرفة: ${feedbackError.message}`);
+
+        await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+      }
+
+      return { ok: true, attachments_count: attachmentRows.length };
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "field workflow failure";
+      const mapped = classifyRuntimeError(raw);
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: mapped.classification,
+        severity: mapped.severity,
+        source: /upload|storage|رفع|file/i.test(raw) ? "attachment_workflow" : /sync|offline|network|timeout/i.test(raw) ? "offline_sync" : "assignment_workflow",
+        message: raw,
+        details: {
+          assignment_id: data.assignment_id,
+          status: data.status,
+          photos_count: data.photos.length,
+          has_battery_log: !!data.battery_log_file,
+          has_knowledge_feedback: !!(data.knowledge_base_id && data.knowledge_feedback_rating),
+        },
+        actionHint: mapped.actionHint,
+        assignmentId: data.assignment_id,
+        knowledgeBaseId: data.knowledge_base_id ?? null,
       });
-      if (feedbackError) throw new Error(`تعذر حفظ تقييم المعرفة: ${feedbackError.message}`);
-
-      await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+      throw error;
     }
-
-    return { ok: true, attachments_count: attachmentRows.length };
   });
 
 export const listAttachments = createServerFn({ method: "GET" })
@@ -1988,9 +2401,29 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(`تعذر حفظ تقييم المعرفة: ${error.message}`);
 
-    await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+    const metrics = await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
 
-    return { ok: true };
+    if (data.rating === "failure" && metrics.effectivenessRate <= 40) {
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: "low_effectiveness_knowledge_issue",
+        severity: metrics.effectivenessRate <= 20 ? "high" : "medium",
+        source: "knowledge_workflow",
+        message: "تراجع فاعلية مادة معرفية بعد تقييمات فشل متتالية",
+        details: {
+          knowledge_base_id: data.knowledge_base_id,
+          effectiveness_rate: metrics.effectivenessRate,
+          success_count: metrics.successCount,
+          fail_count: metrics.failCount,
+          partial_count: metrics.partialCount,
+        },
+        actionHint: "راجع خطوات الحل بالمادة واربطها بأحدث الحالات الناجحة قبل إعادة اعتمادها.",
+        knowledgeBaseId: data.knowledge_base_id,
+        ticketId: data.ticket_id ?? null,
+      });
+    }
+
+    return { ok: true, metrics };
   });
 
 export const saveKnowledgeFeedbackFromContext = createServerFn({ method: "POST" })
@@ -2032,6 +2465,28 @@ export const saveKnowledgeFeedbackFromContext = createServerFn({ method: "POST" 
     if (insertError) throw new Error(`تعذر حفظ تقييم المعرفة: ${insertError.message}`);
 
     const metrics = await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+
+    if (data.rating === "failure" && metrics.effectivenessRate <= 40) {
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: "low_effectiveness_knowledge_issue",
+        severity: metrics.effectivenessRate <= 20 ? "high" : "medium",
+        source: "knowledge_workflow",
+        message: "تراجع فاعلية مادة معرفية داخل سياق تشغيلي",
+        details: {
+          knowledge_base_id: data.knowledge_base_id,
+          effectiveness_rate: metrics.effectivenessRate,
+          success_count: metrics.successCount,
+          fail_count: metrics.failCount,
+          partial_count: metrics.partialCount,
+          assignment_id: data.assignment_id,
+        },
+        actionHint: "افحص حالات الفشل الأخيرة وحدّث المادة أو أضف نسخة محسنة مع تحقق يدوي.",
+        knowledgeBaseId: data.knowledge_base_id,
+        ticketId,
+        assignmentId: data.assignment_id ?? null,
+      });
+    }
 
     return { ok: true, metrics };
   });
@@ -2114,7 +2569,7 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const { data: profileRow } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
     const currentEngineerId = profileRow?.engineer_id ?? null;
 
-    const [ticketsRes, assignmentsRes, engineersRes, productsRes, kbRes] = await Promise.all([
+    const [ticketsRes, assignmentsRes, engineersRes, productsRes, kbRes, alertsRes, eventsRes] = await Promise.all([
       source
         .from("tickets")
         .select("id, customer_id, status, ticket_type, priority, error_code_text, created_at, resolved_at, affected_product_id"),
@@ -2122,9 +2577,19 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       source.from("engineers").select("id, name"),
       source.from("products").select("id, model"),
       source.from("knowledge_base").select("id, title, effectiveness_rate, success_count, fail_count"),
+      source
+        .from("error_intelligence_alerts")
+        .select("id, rule_type, severity, status, title, summary, trigger_count, related_ticket_id, related_assignment_id, related_knowledge_base_id, related_product_id, related_error_code_text, last_detected_at")
+        .order("last_detected_at", { ascending: false })
+        .limit(50),
+      source
+        .from("error_intelligence_events")
+        .select("id, classification, severity, source, occurred_at")
+        .order("occurred_at", { ascending: false })
+        .limit(500),
     ]);
 
-    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error, kbRes.error].filter(Boolean);
+    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error, kbRes.error, alertsRes.error, eventsRes.error].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
     const tickets = ticketsRes.data ?? [];
@@ -2132,6 +2597,8 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const engineers = engineersRes.data ?? [];
     const products = productsRes.data ?? [];
     const knowledge = kbRes.data ?? [];
+    const errorAlerts = alertsRes.data ?? [];
+    const errorEvents = eventsRes.data ?? [];
 
     const customerIds = Array.from(new Set(tickets.map((item) => item.customer_id).filter(Boolean)));
     const customersRes = customerIds.length
@@ -2291,6 +2758,19 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         .slice(0, 6),
     };
 
+    const errorClassifications = new Map<string, number>();
+    for (const event of errorEvents) {
+      const key = event.classification ?? "unknown";
+      errorClassifications.set(key, (errorClassifications.get(key) ?? 0) + 1);
+    }
+
+    const topErrorClassifications = [...errorClassifications.entries()]
+      .map(([classification, count]) => ({ classification, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    const openCriticalErrorAlerts = errorAlerts.filter((alert) => alert.status === "open" && (alert.severity === "high" || alert.severity === "critical"));
+
     return {
       unresolved,
       delayed,
@@ -2313,6 +2793,13 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       topProblematicModels,
       fieldSummary,
       knowledgeBaseUsage,
+      errorIntelligence: {
+        totalAlerts: errorAlerts.length,
+        openAlerts: errorAlerts.filter((item) => item.status === "open").length,
+        openCriticalAlerts: openCriticalErrorAlerts.length,
+        topClassifications: topErrorClassifications,
+        latestAlerts: errorAlerts.slice(0, 12),
+      },
     };
   });
 

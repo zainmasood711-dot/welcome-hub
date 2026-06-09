@@ -17,7 +17,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { createTicketWorkflow, getKnowledgeSuggestions, getPhase2References, listTickets, saveKnowledgeFeedbackFromContext } from "@/lib/phase2.functions";
+import {
+  createTicketWorkflow,
+  getErrorResolutionRecommendations,
+  getKnowledgeSuggestions,
+  getPhase2References,
+  listTickets,
+  recordErrorIntelligenceEvent,
+  saveKnowledgeFeedbackFromContext,
+} from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 type KnowledgeSuggestionItem = {
@@ -33,6 +41,27 @@ type KnowledgeSuggestionItem = {
   brand_name?: string | null;
 };
 
+type ResolutionRecommendationItem = {
+  knowledge: Array<KnowledgeSuggestionItem>;
+  related_tickets: Array<{
+    id: string;
+    status: string;
+    solution_type: string | null;
+    error_code_text: string | null;
+    summary: string;
+    resolved_at: string | null;
+    created_at: string;
+    knowledge_base_id: string | null;
+  }>;
+  recent_successful_resolutions: Array<{
+    ticket_id: string;
+    solution_type: string | null;
+    remote_solution_notes: string | null;
+    resolved_at: string | null;
+    knowledge_base_id: string | null;
+  }>;
+};
+
 export const Route = createFileRoute("/_authenticated/tickets")({
   beforeLoad: async () => {
     await requireRole(["support_engineer", "field_engineer"]);
@@ -46,6 +75,8 @@ function TicketsPage() {
   const listFn = useServerFn(listTickets);
   const createWorkflowFn = useServerFn(createTicketWorkflow);
   const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
+  const recommendResolutionFn = useServerFn(getErrorResolutionRecommendations);
+  const recordErrorEventFn = useServerFn(recordErrorIntelligenceEvent);
   const saveKnowledgeFeedbackContextFn = useServerFn(saveKnowledgeFeedbackFromContext);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
@@ -126,6 +157,23 @@ function TicketsPage() {
         },
       }),
     enabled: Boolean(form.affected_product_id || form.error_code_id || form.error_code_text || form.description.trim().length >= 5),
+  });
+
+  const { data: resolutionRecommendations } = useQuery<ResolutionRecommendationItem>({
+    queryKey: ["ticket-error-recommendations", form.customer_system_id, form.affected_product_id, form.error_code_text, form.description],
+    queryFn: () =>
+      recommendResolutionFn({
+        data: {
+          customer_system_id: form.customer_system_id || null,
+          product_id: form.affected_product_id || null,
+          error_code_text: form.error_code_text || null,
+          issue_text: `${form.title} ${form.description}`,
+          ticket_id: null,
+          assignment_id: null,
+          limit: 5,
+        },
+      }),
+    enabled: Boolean(form.customer_system_id || form.affected_product_id || form.error_code_text || form.description.trim().length >= 8),
   });
 
   const filteredCustomers = useMemo(() => {
@@ -283,6 +331,29 @@ function TicketsPage() {
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["phase2-refs"] });
     } catch (error) {
+      void recordErrorEventFn({
+        data: {
+          classification: "workflow_error",
+          severity: "high",
+          source: "ticket_workflow",
+          message: error instanceof Error ? error.message : "تعذر إنشاء التذكرة",
+          details: {
+            ticket_type: form.ticket_type,
+            priority: form.priority,
+            field_visit_needed: form.field_visit_needed,
+            create_knowledge_entry: form.create_knowledge_entry,
+            affected_product_id: form.affected_product_id || null,
+            error_code_id: form.error_code_id || null,
+            error_code_text: form.error_code_text || null,
+            customer_system_id: form.customer_system_id || null,
+          },
+          action_hint: "راجع البيانات المدخلة وسياق النظام قبل إعادة الإنشاء.",
+          customer_system_id: form.customer_system_id || null,
+          product_id: form.affected_product_id || null,
+          error_code_id: form.error_code_id || null,
+          error_code_text: form.error_code_text || null,
+        },
+      }).catch(() => undefined);
       toast.error(error instanceof Error ? error.message : "تعذر إنشاء التذكرة");
     }
   };
@@ -509,6 +580,66 @@ function TicketsPage() {
                       </Button>
                     </div>
                   ))
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">ذكاء الأخطاء - توصيات الحل</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {(resolutionRecommendations?.related_tickets?.length ?? 0) === 0 && (resolutionRecommendations?.recent_successful_resolutions?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">ستظهر توصيات التشغيل تلقائيًا عند توفر سياق نظام/موديل/كود عطل كافٍ.</p>
+                ) : (
+                  <>
+                    {(resolutionRecommendations?.related_tickets?.length ?? 0) > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">حالات مشابهة مرتبطة</p>
+                        {(resolutionRecommendations?.related_tickets ?? []).slice(0, 3).map((item) => (
+                          <div key={item.id} className="rounded border p-2 text-xs">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">#{item.id.slice(0, 8)}</Badge>
+                              <Badge>{item.status}</Badge>
+                              {item.solution_type && <Badge variant="secondary">{item.solution_type}</Badge>}
+                              {item.error_code_text && <Badge variant="outline">{item.error_code_text}</Badge>}
+                            </div>
+                            <p className="line-clamp-2 text-muted-foreground">{item.summary || "بدون وصف"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(resolutionRecommendations?.recent_successful_resolutions?.length ?? 0) > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">حلول ناجحة حديثة</p>
+                        {(resolutionRecommendations?.recent_successful_resolutions ?? []).slice(0, 3).map((item) => (
+                          <div key={item.ticket_id} className="rounded border p-2 text-xs">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">تذكرة #{item.ticket_id.slice(0, 8)}</Badge>
+                              {item.solution_type && <Badge variant="secondary">{item.solution_type}</Badge>}
+                              {item.resolved_at && <Badge>{new Date(item.resolved_at).toLocaleDateString("ar-EG")}</Badge>}
+                            </div>
+                            <p className="line-clamp-2 text-muted-foreground">{item.remote_solution_notes || "لا توجد ملاحظات حل مسجلة"}</p>
+                            {item.remote_solution_notes && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="mt-2"
+                                onClick={() =>
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    remote_solution_notes: prev.remote_solution_notes || item.remote_solution_notes || "",
+                                  }))
+                                }
+                              >
+                                استخدام هذه الملاحظات
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>

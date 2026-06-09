@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -9,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { getOperationsReport } from "@/lib/phase2.functions";
+import { getOperationsReport, listErrorIntelligenceAlerts, updateErrorIntelligenceAlertStatus } from "@/lib/phase2.functions";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   beforeLoad: async () => {
@@ -20,10 +21,23 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 function ReportsPage() {
   const reportFn = useServerFn(getOperationsReport);
+  const listAlertsFn = useServerFn(listErrorIntelligenceAlerts);
+  const updateAlertStatusFn = useServerFn(updateErrorIntelligenceAlertStatus);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
 
   const { data, isLoading, error } = useQuery({ queryKey: ["operations-report"], queryFn: () => reportFn() });
+  const { data: alerts = [], refetch: refetchAlerts } = useQuery({ queryKey: ["error-intelligence-alerts"], queryFn: () => listAlertsFn() });
+
+  const handleUpdateAlertStatus = async (alertId: string, status: "acknowledged" | "resolved") => {
+    try {
+      await updateAlertStatusFn({ data: { alert_id: alertId, status } });
+      await refetchAlerts();
+      toast.success(status === "resolved" ? "تم إغلاق التنبيه" : "تم تأكيد التنبيه");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر تحديث حالة التنبيه");
+    }
+  };
 
   if (isLoading) {
     return (
@@ -58,6 +72,53 @@ function ReportsPage() {
           <Card><CardHeader><CardTitle className="text-sm">المهام المتأخرة</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{data?.delayed ?? 0}</CardContent></Card>
           <Card><CardHeader><CardTitle className="text-sm">إجمالي المهام</CardTitle></CardHeader><CardContent className="text-2xl font-bold">{data?.totalAssignments ?? 0}</CardContent></Card>
         </section>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">تنبيهات ذكاء الأخطاء (قابلة للتنفيذ)</CardTitle>
+          </CardHeader>
+          <CardContent className="rounded-lg border p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>القاعدة</TableHead>
+                  <TableHead>الشدة</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>الملخص</TableHead>
+                  <TableHead>التكرار</TableHead>
+                  <TableHead>آخر رصد</TableHead>
+                  <TableHead className="text-left">إجراء</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {alerts.length === 0 ? (
+                  <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">لا توجد تنبيهات حالية.</TableCell></TableRow>
+                ) : (
+                  alerts.slice(0, 12).map((alert) => (
+                    <TableRow key={alert.id}>
+                      <TableCell>{alert.rule_type}</TableCell>
+                      <TableCell>{alert.severity}</TableCell>
+                      <TableCell>{alert.status}</TableCell>
+                      <TableCell className="max-w-[340px] truncate">{alert.summary}</TableCell>
+                      <TableCell>{alert.trigger_count}</TableCell>
+                      <TableCell>{new Date(alert.last_detected_at).toLocaleDateString("ar-EG")}</TableCell>
+                      <TableCell className="text-left">
+                        <div className="flex gap-2">
+                          {alert.status === "open" && (
+                            <Button size="sm" variant="outline" onClick={() => void handleUpdateAlertStatus(alert.id, "acknowledged")}>تأكيد</Button>
+                          )}
+                          {alert.status !== "resolved" && (
+                            <Button size="sm" onClick={() => void handleUpdateAlertStatus(alert.id, "resolved")}>حل</Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
         <section className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <Card>

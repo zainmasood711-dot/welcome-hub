@@ -16,7 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { supabase } from "@/integrations/supabase/client";
 import { requireRole } from "@/lib/auth-client";
-import { getAssignmentDetailsBundle, submitAssignmentFieldReportWorkflow } from "@/lib/phase2.functions";
+import {
+  getAssignmentDetailsBundle,
+  getErrorResolutionRecommendations,
+  recordErrorIntelligenceEvent,
+  submitAssignmentFieldReportWorkflow,
+} from "@/lib/phase2.functions";
 
 export const Route = createFileRoute("/_authenticated/field-task/$assignmentId")({
   beforeLoad: async () => {
@@ -88,7 +93,9 @@ function FieldTaskPage() {
   const { assignmentId } = Route.useParams();
   const queryClient = useQueryClient();
   const detailsFn = useServerFn(getAssignmentDetailsBundle);
+  const recommendResolutionFn = useServerFn(getErrorResolutionRecommendations);
   const submitFn = useServerFn(submitAssignmentFieldReportWorkflow);
+  const recordErrorEventFn = useServerFn(recordErrorIntelligenceEvent);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
 
@@ -130,6 +137,23 @@ function FieldTaskPage() {
 
   const data = detailsQuery.data ?? cachedBundle;
   const isLoading = detailsQuery.isLoading && !cachedBundle;
+
+  const { data: recommendations } = useQuery({
+    queryKey: ["field-task-error-recommendations", assignmentId, data?.ticket?.id, data?.system?.id, data?.ticket?.affected_product_id, data?.ticket?.error_code_text],
+    queryFn: () =>
+      recommendResolutionFn({
+        data: {
+          customer_system_id: data?.system?.id ?? data?.ticket?.customer_system_id ?? null,
+          product_id: data?.ticket?.affected_product_id ?? null,
+          error_code_text: data?.ticket?.error_code_text ?? null,
+          issue_text: data?.ticket?.description ?? form.work_done ?? null,
+          ticket_id: data?.ticket?.id ?? null,
+          assignment_id: assignmentId,
+          limit: 5,
+        },
+      }),
+    enabled: Boolean(data?.ticket?.id || data?.system?.id),
+  });
 
   const readQueue = () => {
     try {
@@ -394,6 +418,24 @@ function FieldTaskPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "تعذر إرسال التقرير";
       setSubmitError(message);
+      void recordErrorEventFn({
+        data: {
+          classification: /upload|storage|رفع|file/i.test(message) ? "upload_error" : /sync|offline|network|timeout|انقطاع/i.test(message) ? "sync_error" : "workflow_error",
+          severity: /upload|storage|رفع|failed|فشل/i.test(message) ? "high" : "medium",
+          source: /upload|storage|رفع|file/i.test(message) ? "attachment_workflow" : /sync|offline|network|timeout|انقطاع/i.test(message) ? "offline_sync" : "assignment_workflow",
+          message,
+          details: {
+            assignment_id: assignmentId,
+            status: form.status,
+            photos_count: selectedImageFiles.length,
+            queued_reports: pendingQueueCount,
+            is_online: isOnline,
+          },
+          action_hint: "راجع حالة الاتصال ورفع المرفقات وصلاحيات التخزين قبل إعادة الإرسال.",
+          assignment_id: assignmentId,
+          knowledge_base_id: form.knowledge_base_id || null,
+        },
+      }).catch(() => undefined);
       if (selectedImageFiles.length > 0) {
         toast.error(`${message} - لم يتم إرسال التقرير لأن رفع الصور لم يكتمل. حاول مرة أخرى.`);
       } else if (!navigator.onLine || /network|failed|timeout/i.test(message)) {
@@ -501,6 +543,32 @@ function FieldTaskPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">تقييم المعرفة</CardTitle></CardHeader>
           <CardContent className="space-y-2">
+            {(recommendations?.recent_successful_resolutions?.length ?? 0) > 0 && (
+              <div className="rounded border p-2 text-xs space-y-1">
+                <p className="font-medium text-muted-foreground">حلول ناجحة حديثة مشابهة</p>
+                {(recommendations?.recent_successful_resolutions ?? []).slice(0, 2).map((item: any) => (
+                  <div key={item.ticket_id} className="rounded border p-2">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">#{item.ticket_id.slice(0, 8)}</Badge>
+                      {item.solution_type && <Badge variant="secondary">{item.solution_type}</Badge>}
+                    </div>
+                    <p className="line-clamp-2 text-muted-foreground">{item.remote_solution_notes || "لا توجد ملاحظات حل مسجلة"}</p>
+                    {item.remote_solution_notes && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={() => setForm((p) => ({ ...p, work_done: p.work_done || item.remote_solution_notes }))}
+                      >
+                        استخدام كنقطة بداية
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="مقال المعرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(data?.knowledge_articles ?? []).map((item: any) => <SelectItem key={item.id} value={item.id}>{item.title} • {item.effectiveness_rate ?? 0}% • استخدام {item.usage_count ?? 0}</SelectItem>)}</SelectContent></Select>
             {form.knowledge_base_id && (
               <p className="text-xs text-muted-foreground">
