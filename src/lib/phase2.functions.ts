@@ -611,6 +611,13 @@ async function assertSupportRole(supabase: SupabaseClient<Database>, userId: str
   }
 }
 
+async function assertSupportOrManagerRole(supabase: SupabaseClient<Database>, userId: string) {
+  const roles = await getUserRoles(supabase, userId);
+  if (!roles.includes("support_engineer") && !roles.includes("manager")) {
+    throw new Error("ليس لديك صلاحية لتنفيذ هذا الإجراء");
+  }
+}
+
 async function assertCanAccessAssignment(supabase: SupabaseClient<Database>, userId: string, assignmentId: string) {
   const roles = await getUserRoles(supabase, userId);
   const { data: assignment, error } = await supabase
@@ -1541,7 +1548,7 @@ export const updateErrorIntelligenceAlertStatus = createServerFn({ method: "POST
   .inputValidator((input) => updateErrorAlertStatusSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    await assertSupportRole(supabase, userId);
+    await assertSupportOrManagerRole(supabase, userId);
 
     const patch: Record<string, string | null> = { status: data.status };
     if (data.status === "acknowledged") patch.acknowledged_at = new Date().toISOString();
