@@ -1378,6 +1378,42 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
       if (updateTicketKbError) throw new Error(`تم إنشاء مادة المعرفة لكن تعذر ربطها بالتذكرة: ${updateTicketKbError.message}`);
     }
 
+      if (data.customer_system_id || errorCodeText || data.affected_product_id) {
+        let recurringQuery = supabase
+          .from("tickets")
+          .select("id", { count: "exact", head: true })
+          .neq("id", createdTicket.id)
+          .gte("created_at", new Date(Date.now() - 1000 * 60 * 60 * 24 * 21).toISOString());
+
+        if (data.customer_system_id) recurringQuery = recurringQuery.eq("customer_system_id", data.customer_system_id);
+        if (data.affected_product_id) recurringQuery = recurringQuery.eq("affected_product_id", data.affected_product_id);
+        if (errorCodeText) recurringQuery = recurringQuery.ilike("error_code_text", errorCodeText);
+
+        const { count: recurringCount, error: recurringError } = await recurringQuery;
+        if (!recurringError && (recurringCount ?? 0) >= 2) {
+          await insertErrorEvent(supabase, {
+            createdBy: userId,
+            classification: "repeated_operational_issue",
+            severity: (recurringCount ?? 0) >= 4 ? "high" : "medium",
+            source: "ticket_workflow",
+            message: "نمط تشغيلي متكرر لنفس سياق العطل",
+            details: {
+              recurring_count_21d: recurringCount,
+              customer_system_id: data.customer_system_id,
+              affected_product_id: data.affected_product_id,
+              error_code_text: errorCodeText,
+            },
+            actionHint: "راجع الحلول السابقة المرتبطة بنفس السياق وأنشئ إجراء تصحيحي موحّد.",
+            customerId,
+            customerSystemId: data.customer_system_id ?? null,
+            ticketId: createdTicket.id,
+            productId: data.affected_product_id ?? null,
+            errorCodeId: data.error_code_id ?? null,
+            errorCodeText: errorCodeText ?? null,
+          });
+        }
+      }
+
       return {
         ok: true,
         ticket_id: createdTicket.id,
