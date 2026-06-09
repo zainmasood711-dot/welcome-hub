@@ -2358,9 +2358,29 @@ export const saveKnowledgeFeedback = createServerFn({ method: "POST" })
     });
     if (error) throw new Error(`تعذر حفظ تقييم المعرفة: ${error.message}`);
 
-    await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+    const metrics = await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
 
-    return { ok: true };
+    if (data.rating === "failure" && metrics.effectivenessRate <= 40) {
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: "low_effectiveness_knowledge_issue",
+        severity: metrics.effectivenessRate <= 20 ? "high" : "medium",
+        source: "knowledge_workflow",
+        message: "تراجع فاعلية مادة معرفية بعد تقييمات فشل متتالية",
+        details: {
+          knowledge_base_id: data.knowledge_base_id,
+          effectiveness_rate: metrics.effectivenessRate,
+          success_count: metrics.successCount,
+          fail_count: metrics.failCount,
+          partial_count: metrics.partialCount,
+        },
+        actionHint: "راجع خطوات الحل بالمادة واربطها بأحدث الحالات الناجحة قبل إعادة اعتمادها.",
+        knowledgeBaseId: data.knowledge_base_id,
+        ticketId: data.ticket_id ?? null,
+      });
+    }
+
+    return { ok: true, metrics };
   });
 
 export const saveKnowledgeFeedbackFromContext = createServerFn({ method: "POST" })
@@ -2402,6 +2422,28 @@ export const saveKnowledgeFeedbackFromContext = createServerFn({ method: "POST" 
     if (insertError) throw new Error(`تعذر حفظ تقييم المعرفة: ${insertError.message}`);
 
     const metrics = await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+
+    if (data.rating === "failure" && metrics.effectivenessRate <= 40) {
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: "low_effectiveness_knowledge_issue",
+        severity: metrics.effectivenessRate <= 20 ? "high" : "medium",
+        source: "knowledge_workflow",
+        message: "تراجع فاعلية مادة معرفية داخل سياق تشغيلي",
+        details: {
+          knowledge_base_id: data.knowledge_base_id,
+          effectiveness_rate: metrics.effectivenessRate,
+          success_count: metrics.successCount,
+          fail_count: metrics.failCount,
+          partial_count: metrics.partialCount,
+          assignment_id: data.assignment_id,
+        },
+        actionHint: "افحص حالات الفشل الأخيرة وحدّث المادة أو أضف نسخة محسنة مع تحقق يدوي.",
+        knowledgeBaseId: data.knowledge_base_id,
+        ticketId,
+        assignmentId: data.assignment_id ?? null,
+      });
+    }
 
     return { ok: true, metrics };
   });
