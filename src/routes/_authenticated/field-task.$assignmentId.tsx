@@ -543,6 +543,32 @@ function FieldTaskPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">تقييم المعرفة</CardTitle></CardHeader>
           <CardContent className="space-y-2">
+            {(recommendations?.recent_successful_resolutions?.length ?? 0) > 0 && (
+              <div className="rounded border p-2 text-xs space-y-1">
+                <p className="font-medium text-muted-foreground">حلول ناجحة حديثة مشابهة</p>
+                {recommendations.recent_successful_resolutions.slice(0, 2).map((item: any) => (
+                  <div key={item.ticket_id} className="rounded border p-2">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">#{item.ticket_id.slice(0, 8)}</Badge>
+                      {item.solution_type && <Badge variant="secondary">{item.solution_type}</Badge>}
+                    </div>
+                    <p className="line-clamp-2 text-muted-foreground">{item.remote_solution_notes || "لا توجد ملاحظات حل مسجلة"}</p>
+                    {item.remote_solution_notes && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={() => setForm((p) => ({ ...p, work_done: p.work_done || item.remote_solution_notes }))}
+                      >
+                        استخدام كنقطة بداية
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="مقال المعرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(data?.knowledge_articles ?? []).map((item: any) => <SelectItem key={item.id} value={item.id}>{item.title} • {item.effectiveness_rate ?? 0}% • استخدام {item.usage_count ?? 0}</SelectItem>)}</SelectContent></Select>
             {form.knowledge_base_id && (
               <p className="text-xs text-muted-foreground">
