@@ -601,7 +601,6 @@ async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, k
       success_count: successCount,
       fail_count: failCount,
       partial_fail_count: partialCount,
-      effectiveness_rate: effectivenessRate,
       usage_count_total: usageCountTotal,
       last_used_at: usageCountTotal > 0 ? nowIso : null,
       last_success_at: successCount > 0 ? nowIso : null,
@@ -1415,7 +1414,6 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
           success_count: 0,
           partial_fail_count: 0,
           fail_count: 0,
-          effectiveness_rate: 0,
           created_by: userId,
         } as any)
         .select("id")
@@ -1698,7 +1696,6 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
         success_count: 0,
         partial_fail_count: 0,
         fail_count: 0,
-        effectiveness_rate: 0,
         created_by: userId,
       } as any)
       .select("id")
@@ -1762,7 +1759,6 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
           success_count: 0,
           partial_fail_count: 0,
           fail_count: 0,
-          effectiveness_rate: 0,
           created_by: userId,
         } as any)
         .select("id")
@@ -1829,7 +1825,6 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
         success_count: 0,
         partial_fail_count: 0,
         fail_count: 0,
-        effectiveness_rate: 0,
         created_by: userId,
       } as any)
       .select("id")
@@ -2462,7 +2457,6 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
           success_count: data.success_count,
           partial_fail_count: data.partial_count,
           fail_count: data.fail_count,
-          effectiveness_rate: data.effectiveness_rate,
         } as any)
         .eq("id", data.id);
       if (error) throw new Error(`تعذر تعديل قاعدة المعرفة: ${error.message}`);
@@ -2481,7 +2475,6 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
       success_count: data.success_count,
       partial_fail_count: data.partial_count,
       fail_count: data.fail_count,
-      effectiveness_rate: data.effectiveness_rate,
       created_by: userId,
     } as any);
     if (error) throw new Error(`تعذر إنشاء مادة معرفية: ${error.message}`);

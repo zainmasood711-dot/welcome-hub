@@ -182,6 +182,14 @@ export async function seedDemoData(currentUserId?: string) {
     summary.engineers += 1;
   }
 
+  if (engineerIds.length > 0) {
+    const { error: fieldProfileLinkError } = await supabaseAdmin
+      .from("profiles")
+      .update({ engineer_id: engineerIds[0] })
+      .eq("email", "demo.field@energie-connect.local");
+    if (fieldProfileLinkError) throw new Error(`فشل ربط حساب الميداني التجريبي بمهندس: ${fieldProfileLinkError.message}`);
+  }
+
   const customersPayload = [
     {
       name: "شركة النور للمقاولات",
@@ -302,7 +310,6 @@ export async function seedDemoData(currentUserId?: string) {
         linked_ticket_ids: [],
         success_count: 12,
         fail_count: 2,
-        effectiveness_rate: 85.71,
         created_by: currentUserId ?? null,
       })
       .select("id")
