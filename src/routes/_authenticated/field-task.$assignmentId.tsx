@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -252,7 +252,7 @@ function FieldTaskPage() {
     }));
   }, [data?.assignment]);
 
-  const onPickPhotos = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const onPickPhotos = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) {
       setSelectedImageFiles([]);
@@ -365,6 +365,10 @@ function FieldTaskPage() {
     let payload = buildPayload();
 
     if (!isOnline) {
+      if (selectedImageFiles.length > 0) {
+        toast.error("رفع الصور يحتاج اتصالاً بالإنترنت، ثم أعد المحاولة");
+        return;
+      }
       enqueueReport(payload);
       return;
     }
@@ -463,10 +467,20 @@ function FieldTaskPage() {
           <CardHeader className="pb-2"><CardTitle className="text-sm">رفع الصور وملف البطارية</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 gap-2">
-              <Input placeholder="مسار الصورة (example: mobile/photo-1.jpg)" value={form.photo_path} onChange={(e) => setForm((p) => ({ ...p, photo_path: e.target.value }))} />
-              <Input placeholder="اسم الصورة" value={form.photo_name} onChange={(e) => setForm((p) => ({ ...p, photo_name: e.target.value }))} />
-              <Input placeholder="حجم الصورة بالبايت" value={form.photo_size} onChange={(e) => setForm((p) => ({ ...p, photo_size: e.target.value }))} />
-              <Button type="button" variant="outline" onClick={addPhoto}>إضافة صورة</Button>
+              <Label htmlFor="field-photos-upload">صور من الجهاز (يتم ضغطها تلقائيًا للموبايل)</Label>
+              <Input id="field-photos-upload" type="file" accept=".jpg,.jpeg,.png,.webp" multiple onChange={onPickPhotos} />
+              {selectedImageFiles.length > 0 && (
+                <p className="text-xs text-muted-foreground">تم اختيار {selectedImageFiles.length} صورة، وسيتم رفعها قبل إرسال التقرير.</p>
+              )}
+              {isUploadingPhotos && (
+                <div className="space-y-2 rounded border p-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span>{uploadStatusText ?? "جاري رفع الصور..."}</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <Progress value={uploadProgress} />
+                </div>
+              )}
             </div>
             {photos.map((photo, idx) => (
               <div key={`${photo.file_path}-${idx}`} className="rounded border p-2 text-xs flex items-center justify-between">
@@ -492,7 +506,7 @@ function FieldTaskPage() {
         </Card>
 
         <div className="sticky bottom-2 z-10 rounded-lg border bg-card/95 p-2 backdrop-blur">
-          <Button className="w-full" onClick={submit} disabled={!canSubmit || isSyncingQueue}>إرسال التقرير النهائي</Button>
+          <Button className="w-full" onClick={submit} disabled={!canSubmit || isSyncingQueue || isUploadingPhotos}>{isUploadingPhotos ? "جاري رفع الصور..." : "إرسال التقرير النهائي"}</Button>
           {!isOnline && <p className="mt-2 text-center text-xs text-muted-foreground">في وضع عدم الاتصال: سيتم حفظ الطلب وإرساله تلقائيًا لاحقًا.</p>}
         </div>
       </div>
