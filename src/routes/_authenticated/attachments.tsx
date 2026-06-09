@@ -183,7 +183,7 @@ function AttachmentsPage() {
                   <TableCell>{item.file_type}</TableCell>
                   <TableCell className="max-w-[360px] truncate">{item.file_path}</TableCell>
                   <TableCell>{item.original_name ?? "—"}</TableCell>
-                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: item.id, attachable_type: item.attachable_type, attachable_id: item.attachable_id, file_type: item.file_type, file_path: item.file_path, original_name: item.original_name ?? "", file_size: item.file_size ? String(item.file_size) : "", description: item.description ?? "" }); setOpen(true); }}>تعديل</Button></TableCell>}
+                  {canManage && <TableCell className="text-left"><Button variant="outline" size="sm" onClick={() => { setForm({ id: item.id, attachable_type: item.attachable_type ?? "ticket", attachable_id: item.attachable_id ?? "", file_type: item.file_type ?? "document", file_path: item.file_path ?? "", original_name: item.original_name ?? "", file_size: item.file_size ? String(item.file_size) : "", description: item.description ?? "" }); setOpen(true); }}>تعديل</Button></TableCell>}
                 </TableRow>
               ))}
             </TableBody>
