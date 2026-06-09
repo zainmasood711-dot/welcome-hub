@@ -1528,8 +1528,8 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
     const articleIds = baseRows.map((item) => item.id).filter(Boolean);
     let lifecycleMeta = new Map<string, any>();
     if (articleIds.length > 0) {
-      const { data: lifecycleRows, error: lifecycleError } = await supabase
-        .from("knowledge_base")
+      const { data: lifecycleRows, error: lifecycleError } = await (supabase
+        .from("knowledge_base" as any) as any)
         .select("id, lifecycle_state, quality_score_v2, decline_score, usage_count_total, last_success_at, needs_human_review")
         .in("id", articleIds);
       if (lifecycleError) throw new Error(`تعذر تحميل بيانات دورة حياة المعرفة: ${lifecycleError.message}`);
@@ -1838,8 +1838,8 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { supabase } = context;
 
-    const { data: article, error: articleError } = await supabase
-      .from("knowledge_base")
+    const { data: article, error: articleError } = await (supabase
+      .from("knowledge_base" as any) as any)
       .select(
         "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state, lifecycle_state, needs_human_review, review_priority, quality_score_v2, decline_score, usage_count_total, last_success_at, last_failure_at, last_used_at",
       )
@@ -2371,8 +2371,8 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
       let ranked: any[] = (rankedRows ?? []) as any[];
       const rankedIds = ranked.map((item) => item.id).filter(Boolean);
       if (rankedIds.length > 0) {
-        const { data: lifecycleRows, error: lifecycleError } = await supabase
-          .from("knowledge_base")
+        const { data: lifecycleRows, error: lifecycleError } = await (supabase
+          .from("knowledge_base" as any) as any)
           .select("id, lifecycle_state, needs_human_review, review_priority, quality_score_v2, decline_score, usage_count_total, last_success_at")
           .in("id", rankedIds);
         if (lifecycleError) throw new Error(`تعذر تحميل حالة دورة الحياة: ${lifecycleError.message}`);
@@ -2483,8 +2483,8 @@ export const updateKnowledgeLifecycleStatus = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     await assertSupportOrManagerRole(supabase, userId);
 
-    const { data: article, error: articleError } = await supabase
-      .from("knowledge_base")
+    const { data: article, error: articleError } = await (supabase
+      .from("knowledge_base" as any) as any)
       .select("id, lifecycle_state")
       .eq("id", data.article_id)
       .maybeSingle();
