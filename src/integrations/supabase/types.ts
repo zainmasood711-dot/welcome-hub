@@ -28,7 +28,9 @@ export type Database = {
           scheduled_date: string | null
           started_at: string | null
           status: string
-          ticket_id: string
+          submitted_at: string | null
+          synced_at: string | null
+          ticket_id: string | null
           updated_at: string
           work_done: string | null
         }
@@ -45,7 +47,9 @@ export type Database = {
           scheduled_date?: string | null
           started_at?: string | null
           status?: string
-          ticket_id: string
+          submitted_at?: string | null
+          synced_at?: string | null
+          ticket_id?: string | null
           updated_at?: string
           work_done?: string | null
         }
@@ -62,7 +66,9 @@ export type Database = {
           scheduled_date?: string | null
           started_at?: string | null
           status?: string
-          ticket_id?: string
+          submitted_at?: string | null
+          synced_at?: string | null
+          ticket_id?: string | null
           updated_at?: string
           work_done?: string | null
         }
@@ -243,6 +249,7 @@ export type Database = {
           created_by: string | null
           governorate: string | null
           id: string
+          location_coordinates: string | null
           name: string
           notes: string | null
           phone: string
@@ -255,6 +262,7 @@ export type Database = {
           created_by?: string | null
           governorate?: string | null
           id?: string
+          location_coordinates?: string | null
           name: string
           notes?: string | null
           phone: string
@@ -267,6 +275,7 @@ export type Database = {
           created_by?: string | null
           governorate?: string | null
           id?: string
+          location_coordinates?: string | null
           name?: string
           notes?: string | null
           phone?: string
@@ -439,7 +448,7 @@ export type Database = {
           created_at: string
           engineer_id: string | null
           id: string
-          is_helpful: boolean
+          is_helpful: boolean | null
           knowledge_base_id: string
           notes: string | null
           rating: string | null
@@ -450,7 +459,7 @@ export type Database = {
           created_at?: string
           engineer_id?: string | null
           id?: string
-          is_helpful: boolean
+          is_helpful?: boolean | null
           knowledge_base_id: string
           notes?: string | null
           rating?: string | null
@@ -461,7 +470,7 @@ export type Database = {
           created_at?: string
           engineer_id?: string | null
           id?: string
-          is_helpful?: boolean
+          is_helpful?: boolean | null
           knowledge_base_id?: string
           notes?: string | null
           rating?: string | null
