@@ -16,8 +16,11 @@ export type Database = {
     Tables: {
       assignments: {
         Row: {
+          archive_tags: string[]
+          archiving_freshness_at: string | null
           assigned_by: string | null
           assignment_type: string
+          classification_metadata: Json
           completed_at: string | null
           created_at: string
           customer_system_id: string | null
@@ -35,8 +38,11 @@ export type Database = {
           work_done: string | null
         }
         Insert: {
+          archive_tags?: string[]
+          archiving_freshness_at?: string | null
           assigned_by?: string | null
           assignment_type: string
+          classification_metadata?: Json
           completed_at?: string | null
           created_at?: string
           customer_system_id?: string | null
@@ -54,8 +60,11 @@ export type Database = {
           work_done?: string | null
         }
         Update: {
+          archive_tags?: string[]
+          archiving_freshness_at?: string | null
           assigned_by?: string | null
           assignment_type?: string
+          classification_metadata?: Json
           completed_at?: string | null
           created_at?: string
           customer_system_id?: string | null
@@ -101,52 +110,91 @@ export type Database = {
           assignment_id: string | null
           attachable_id: string | null
           attachable_type: string | null
+          classification_metadata: Json
+          confidence_level: string
+          confidence_score: number
+          content_source: string
           created_at: string
+          dedupe_signature: string | null
           description: string | null
+          duplicate_of: string | null
           file_path: string | null
           file_size: number | null
           file_type: string | null
           file_url: string | null
+          freshness_score: number
           id: string
+          last_enriched_at: string
+          normalized_tags: string[]
           original_name: string | null
+          quality_score: number
+          related_resolution_type: string | null
+          review_state: string
           ticket_id: string | null
           updated_at: string
           uploaded_at: string
           uploaded_by: string | null
+          verification_state: string
         }
         Insert: {
           assignment_id?: string | null
           attachable_id?: string | null
           attachable_type?: string | null
+          classification_metadata?: Json
+          confidence_level?: string
+          confidence_score?: number
+          content_source?: string
           created_at?: string
+          dedupe_signature?: string | null
           description?: string | null
+          duplicate_of?: string | null
           file_path?: string | null
           file_size?: number | null
           file_type?: string | null
           file_url?: string | null
+          freshness_score?: number
           id?: string
+          last_enriched_at?: string
+          normalized_tags?: string[]
           original_name?: string | null
+          quality_score?: number
+          related_resolution_type?: string | null
+          review_state?: string
           ticket_id?: string | null
           updated_at?: string
           uploaded_at?: string
           uploaded_by?: string | null
+          verification_state?: string
         }
         Update: {
           assignment_id?: string | null
           attachable_id?: string | null
           attachable_type?: string | null
+          classification_metadata?: Json
+          confidence_level?: string
+          confidence_score?: number
+          content_source?: string
           created_at?: string
+          dedupe_signature?: string | null
           description?: string | null
+          duplicate_of?: string | null
           file_path?: string | null
           file_size?: number | null
           file_type?: string | null
           file_url?: string | null
+          freshness_score?: number
           id?: string
+          last_enriched_at?: string
+          normalized_tags?: string[]
           original_name?: string | null
+          quality_score?: number
+          related_resolution_type?: string | null
+          review_state?: string
           ticket_id?: string | null
           updated_at?: string
           uploaded_at?: string
           uploaded_by?: string | null
+          verification_state?: string
         }
         Relationships: [
           {
@@ -154,6 +202,13 @@ export type Database = {
             columns: ["assignment_id"]
             isOneToOne: false
             referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attachments_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "attachments"
             referencedColumns: ["id"]
           },
           {
@@ -204,6 +259,7 @@ export type Database = {
           customer_id: string
           id: string
           installation_date: string | null
+          normalized_system_name: string | null
           notes: string | null
           status: string
           system_name: string
@@ -215,6 +271,7 @@ export type Database = {
           customer_id: string
           id?: string
           installation_date?: string | null
+          normalized_system_name?: string | null
           notes?: string | null
           status?: string
           system_name: string
@@ -226,6 +283,7 @@ export type Database = {
           customer_id?: string
           id?: string
           installation_date?: string | null
+          normalized_system_name?: string | null
           notes?: string | null
           status?: string
           system_name?: string
@@ -251,6 +309,7 @@ export type Database = {
           id: string
           location_coordinates: string | null
           name: string
+          normalized_name: string | null
           notes: string | null
           phone: string
           updated_at: string
@@ -264,6 +323,7 @@ export type Database = {
           id?: string
           location_coordinates?: string | null
           name: string
+          normalized_name?: string | null
           notes?: string | null
           phone: string
           updated_at?: string
@@ -277,6 +337,7 @@ export type Database = {
           id?: string
           location_coordinates?: string | null
           name?: string
+          normalized_name?: string | null
           notes?: string | null
           phone?: string
           updated_at?: string
@@ -339,6 +400,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          normalized_code: string | null
           occurrences_count: number
           product_id: string | null
           recommended_solution: string | null
@@ -351,6 +413,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          normalized_code?: string | null
           occurrences_count?: number
           product_id?: string | null
           recommended_solution?: string | null
@@ -363,6 +426,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          normalized_code?: string | null
           occurrences_count?: number
           product_id?: string | null
           recommended_solution?: string | null
@@ -380,60 +444,109 @@ export type Database = {
       }
       knowledge_base: {
         Row: {
+          classification_metadata: Json
+          confidence_level: string
+          confidence_score: number
+          content_source: string
           created_at: string
           created_by: string | null
+          dedupe_signature: string | null
+          derived_resolution_type: string | null
+          duplicate_of: string | null
           effectiveness_rate: number | null
           error_code_text: string | null
           fail_count: number
+          freshness_score: number
           id: string
           issue_description: string | null
+          last_enriched_at: string
+          last_reviewed_at: string | null
           linked_ticket_ids: string[]
+          normalized_tags: string[]
           partial_fail_count: number
           product_id: string | null
+          quality_score: number
+          review_state: string
           search_keywords: string | null
           solution_steps: string | null
           source: string
           success_count: number
           title: string
           updated_at: string
+          verification_state: string
         }
         Insert: {
+          classification_metadata?: Json
+          confidence_level?: string
+          confidence_score?: number
+          content_source?: string
           created_at?: string
           created_by?: string | null
+          dedupe_signature?: string | null
+          derived_resolution_type?: string | null
+          duplicate_of?: string | null
           effectiveness_rate?: number | null
           error_code_text?: string | null
           fail_count?: number
+          freshness_score?: number
           id?: string
           issue_description?: string | null
+          last_enriched_at?: string
+          last_reviewed_at?: string | null
           linked_ticket_ids?: string[]
+          normalized_tags?: string[]
           partial_fail_count?: number
           product_id?: string | null
+          quality_score?: number
+          review_state?: string
           search_keywords?: string | null
           solution_steps?: string | null
           source?: string
           success_count?: number
           title: string
           updated_at?: string
+          verification_state?: string
         }
         Update: {
+          classification_metadata?: Json
+          confidence_level?: string
+          confidence_score?: number
+          content_source?: string
           created_at?: string
           created_by?: string | null
+          dedupe_signature?: string | null
+          derived_resolution_type?: string | null
+          duplicate_of?: string | null
           effectiveness_rate?: number | null
           error_code_text?: string | null
           fail_count?: number
+          freshness_score?: number
           id?: string
           issue_description?: string | null
+          last_enriched_at?: string
+          last_reviewed_at?: string | null
           linked_ticket_ids?: string[]
+          normalized_tags?: string[]
           partial_fail_count?: number
           product_id?: string | null
+          quality_score?: number
+          review_state?: string
           search_keywords?: string | null
           solution_steps?: string | null
           source?: string
           success_count?: number
           title?: string
           updated_at?: string
+          verification_state?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "knowledge_base_duplicate_of_fkey"
+            columns: ["duplicate_of"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "knowledge_base_product_id_fkey"
             columns: ["product_id"]
@@ -445,8 +558,10 @@ export type Database = {
       }
       knowledge_feedback: {
         Row: {
+          context_snapshot: Json
           created_at: string
           engineer_id: string | null
+          feedback_weight: number
           id: string
           is_helpful: boolean | null
           knowledge_base_id: string
@@ -456,8 +571,10 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          context_snapshot?: Json
           created_at?: string
           engineer_id?: string | null
+          feedback_weight?: number
           id?: string
           is_helpful?: boolean | null
           knowledge_base_id: string
@@ -467,8 +584,10 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          context_snapshot?: Json
           created_at?: string
           engineer_id?: string | null
+          feedback_weight?: number
           id?: string
           is_helpful?: boolean | null
           knowledge_base_id?: string
@@ -602,6 +721,7 @@ export type Database = {
           id: string
           is_active: boolean
           model: string
+          normalized_model: string | null
           updated_at: string
         }
         Insert: {
@@ -612,6 +732,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           model: string
+          normalized_model?: string | null
           updated_at?: string
         }
         Update: {
@@ -622,6 +743,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           model?: string
+          normalized_model?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -775,7 +897,10 @@ export type Database = {
       tickets: {
         Row: {
           affected_product_id: string | null
+          archive_tags: string[]
+          archiving_freshness_at: string | null
           category_id: string | null
+          classification_metadata: Json
           closed_at: string | null
           created_at: string
           created_by: string | null
@@ -801,7 +926,10 @@ export type Database = {
         }
         Insert: {
           affected_product_id?: string | null
+          archive_tags?: string[]
+          archiving_freshness_at?: string | null
           category_id?: string | null
+          classification_metadata?: Json
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -827,7 +955,10 @@ export type Database = {
         }
         Update: {
           affected_product_id?: string | null
+          archive_tags?: string[]
+          archiving_freshness_at?: string | null
           category_id?: string | null
+          classification_metadata?: Json
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
