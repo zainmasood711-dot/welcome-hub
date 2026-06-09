@@ -232,6 +232,7 @@ const knowledgeSchema = z.object({
   source: z.enum(["manual", "auto_from_ticket"]),
   linked_ticket_ids: z.array(z.string().uuid()).default([]),
   success_count: z.number().int().min(0).max(999999).default(0),
+  partial_count: z.number().int().min(0).max(999999).default(0),
   fail_count: z.number().int().min(0).max(999999).default(0),
   effectiveness_rate: z.number().min(0).max(100).default(0),
 });
@@ -1127,10 +1128,11 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
           source: "auto_from_ticket",
           linked_ticket_ids: [createdTicket.id],
           success_count: 0,
+          partial_count: 0,
           fail_count: 0,
           effectiveness_rate: 0,
           created_by: userId,
-        })
+        } as any)
         .select("id")
         .single();
       if (kbError) throw new Error(`تم إنشاء التذكرة لكن تعذر إنشاء مادة المعرفة: ${kbError.message}`);
@@ -1297,10 +1299,11 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
         source: "auto_from_ticket",
         linked_ticket_ids: [ticket.id],
         success_count: 0,
+        partial_count: 0,
         fail_count: 0,
         effectiveness_rate: 0,
         created_by: userId,
-      })
+      } as any)
       .select("id")
       .single();
     if (createError) throw new Error(`تعذر إنشاء المادة المعرفية من التذكرة: ${createError.message}`);
@@ -1357,10 +1360,11 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
           source: "auto_from_ticket",
           linked_ticket_ids: [ticket.id],
           success_count: 0,
+          partial_count: 0,
           fail_count: 0,
           effectiveness_rate: 0,
           created_by: userId,
-        })
+        } as any)
         .select("id")
         .single();
       if (createError) throw new Error(`تعذر إنشاء المادة المعرفية من التذكرة: ${createError.message}`);
@@ -1420,10 +1424,11 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
         source: "auto_from_ticket",
         linked_ticket_ids: ticket?.id ? [ticket.id] : [],
         success_count: 0,
+        partial_count: 0,
         fail_count: 0,
         effectiveness_rate: 0,
         created_by: userId,
-      })
+      } as any)
       .select("id")
       .single();
     if (createError) throw new Error(`تعذر إنشاء المادة المعرفية: ${createError.message}`);
@@ -1970,9 +1975,10 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
           source: data.source,
           linked_ticket_ids: data.linked_ticket_ids,
           success_count: data.success_count,
+          partial_count: data.partial_count,
           fail_count: data.fail_count,
           effectiveness_rate: data.effectiveness_rate,
-        })
+        } as any)
         .eq("id", data.id);
       if (error) throw new Error(`تعذر تعديل قاعدة المعرفة: ${error.message}`);
       return { ok: true };
@@ -1988,10 +1994,11 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
       source: data.source,
       linked_ticket_ids: data.linked_ticket_ids,
       success_count: data.success_count,
+      partial_count: data.partial_count,
       fail_count: data.fail_count,
       effectiveness_rate: data.effectiveness_rate,
       created_by: userId,
-    });
+    } as any);
     if (error) throw new Error(`تعذر إنشاء مادة معرفية: ${error.message}`);
     return { ok: true };
   });
