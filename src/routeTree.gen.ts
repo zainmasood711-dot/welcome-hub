@@ -9,38 +9,343 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
+import { Route as AuthenticatedKnowledgeBaseRouteImport } from './routes/_authenticated/knowledge-base'
+import { Route as AuthenticatedErrorCodesRouteImport } from './routes/_authenticated/error-codes'
+import { Route as AuthenticatedEngineersRouteImport } from './routes/_authenticated/engineers'
+import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedCustomersRouteImport } from './routes/_authenticated/customers'
+import { Route as AuthenticatedCustomerSystemsRouteImport } from './routes/_authenticated/customer-systems'
+import { Route as AuthenticatedCatalogRouteImport } from './routes/_authenticated/catalog'
+import { Route as AuthenticatedAttachmentsRouteImport } from './routes/_authenticated/attachments'
+import { Route as AuthenticatedAssignmentsRouteImport } from './routes/_authenticated/assignments'
+import { Route as AuthenticatedReportsRecurringIssuesRouteImport } from './routes/_authenticated/reports.recurring-issues'
+import { Route as AuthenticatedReportsProblematicModelsRouteImport } from './routes/_authenticated/reports.problematic-models'
+import { Route as AuthenticatedReportsOpenTicketStatusRouteImport } from './routes/_authenticated/reports.open-ticket-status'
+import { Route as AuthenticatedReportsEngineerPerformanceRouteImport } from './routes/_authenticated/reports.engineer-performance'
+import { Route as AuthenticatedReportsAverageResolutionTimeRouteImport } from './routes/_authenticated/reports.average-resolution-time'
+import { Route as AuthenticatedKnowledgeBaseArticleIdRouteImport } from './routes/_authenticated/knowledge-base.$articleId'
+import { Route as AuthenticatedFieldTaskAssignmentIdRouteImport } from './routes/_authenticated/field-task.$assignmentId'
+import { Route as AuthenticatedCustomersCustomerIdRouteImport } from './routes/_authenticated/customers.$customerId'
+import { Route as AuthenticatedAssignmentsAssignmentIdRouteImport } from './routes/_authenticated/assignments.$assignmentId'
 
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedTicketsRoute = AuthenticatedTicketsRouteImport.update({
+  id: '/tickets',
+  path: '/tickets',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedKnowledgeBaseRoute =
+  AuthenticatedKnowledgeBaseRouteImport.update({
+    id: '/knowledge-base',
+    path: '/knowledge-base',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedErrorCodesRoute = AuthenticatedErrorCodesRouteImport.update({
+  id: '/error-codes',
+  path: '/error-codes',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedEngineersRoute = AuthenticatedEngineersRouteImport.update({
+  id: '/engineers',
+  path: '/engineers',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCustomersRoute = AuthenticatedCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCustomerSystemsRoute =
+  AuthenticatedCustomerSystemsRouteImport.update({
+    id: '/customer-systems',
+    path: '/customer-systems',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCatalogRoute = AuthenticatedCatalogRouteImport.update({
+  id: '/catalog',
+  path: '/catalog',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAttachmentsRoute =
+  AuthenticatedAttachmentsRouteImport.update({
+    id: '/attachments',
+    path: '/attachments',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAssignmentsRoute =
+  AuthenticatedAssignmentsRouteImport.update({
+    id: '/assignments',
+    path: '/assignments',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedReportsRecurringIssuesRoute =
+  AuthenticatedReportsRecurringIssuesRouteImport.update({
+    id: '/recurring-issues',
+    path: '/recurring-issues',
+    getParentRoute: () => AuthenticatedReportsRoute,
+  } as any)
+const AuthenticatedReportsProblematicModelsRoute =
+  AuthenticatedReportsProblematicModelsRouteImport.update({
+    id: '/problematic-models',
+    path: '/problematic-models',
+    getParentRoute: () => AuthenticatedReportsRoute,
+  } as any)
+const AuthenticatedReportsOpenTicketStatusRoute =
+  AuthenticatedReportsOpenTicketStatusRouteImport.update({
+    id: '/open-ticket-status',
+    path: '/open-ticket-status',
+    getParentRoute: () => AuthenticatedReportsRoute,
+  } as any)
+const AuthenticatedReportsEngineerPerformanceRoute =
+  AuthenticatedReportsEngineerPerformanceRouteImport.update({
+    id: '/engineer-performance',
+    path: '/engineer-performance',
+    getParentRoute: () => AuthenticatedReportsRoute,
+  } as any)
+const AuthenticatedReportsAverageResolutionTimeRoute =
+  AuthenticatedReportsAverageResolutionTimeRouteImport.update({
+    id: '/average-resolution-time',
+    path: '/average-resolution-time',
+    getParentRoute: () => AuthenticatedReportsRoute,
+  } as any)
+const AuthenticatedKnowledgeBaseArticleIdRoute =
+  AuthenticatedKnowledgeBaseArticleIdRouteImport.update({
+    id: '/$articleId',
+    path: '/$articleId',
+    getParentRoute: () => AuthenticatedKnowledgeBaseRoute,
+  } as any)
+const AuthenticatedFieldTaskAssignmentIdRoute =
+  AuthenticatedFieldTaskAssignmentIdRouteImport.update({
+    id: '/field-task/$assignmentId',
+    path: '/field-task/$assignmentId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedCustomersCustomerIdRoute =
+  AuthenticatedCustomersCustomerIdRouteImport.update({
+    id: '/$customerId',
+    path: '/$customerId',
+    getParentRoute: () => AuthenticatedCustomersRoute,
+  } as any)
+const AuthenticatedAssignmentsAssignmentIdRoute =
+  AuthenticatedAssignmentsAssignmentIdRouteImport.update({
+    id: '/$assignmentId',
+    path: '/$assignmentId',
+    getParentRoute: () => AuthenticatedAssignmentsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/assignments': typeof AuthenticatedAssignmentsRouteWithChildren
+  '/attachments': typeof AuthenticatedAttachmentsRoute
+  '/catalog': typeof AuthenticatedCatalogRoute
+  '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
+  '/customers': typeof AuthenticatedCustomersRouteWithChildren
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/engineers': typeof AuthenticatedEngineersRoute
+  '/error-codes': typeof AuthenticatedErrorCodesRoute
+  '/knowledge-base': typeof AuthenticatedKnowledgeBaseRouteWithChildren
+  '/notifications': typeof AuthenticatedNotificationsRoute
+  '/reports': typeof AuthenticatedReportsRouteWithChildren
+  '/tickets': typeof AuthenticatedTicketsRoute
+  '/assignments/$assignmentId': typeof AuthenticatedAssignmentsAssignmentIdRoute
+  '/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/field-task/$assignmentId': typeof AuthenticatedFieldTaskAssignmentIdRoute
+  '/knowledge-base/$articleId': typeof AuthenticatedKnowledgeBaseArticleIdRoute
+  '/reports/average-resolution-time': typeof AuthenticatedReportsAverageResolutionTimeRoute
+  '/reports/engineer-performance': typeof AuthenticatedReportsEngineerPerformanceRoute
+  '/reports/open-ticket-status': typeof AuthenticatedReportsOpenTicketStatusRoute
+  '/reports/problematic-models': typeof AuthenticatedReportsProblematicModelsRoute
+  '/reports/recurring-issues': typeof AuthenticatedReportsRecurringIssuesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth': typeof AuthRoute
+  '/assignments': typeof AuthenticatedAssignmentsRouteWithChildren
+  '/attachments': typeof AuthenticatedAttachmentsRoute
+  '/catalog': typeof AuthenticatedCatalogRoute
+  '/customer-systems': typeof AuthenticatedCustomerSystemsRoute
+  '/customers': typeof AuthenticatedCustomersRouteWithChildren
+  '/dashboard': typeof AuthenticatedDashboardRoute
+  '/engineers': typeof AuthenticatedEngineersRoute
+  '/error-codes': typeof AuthenticatedErrorCodesRoute
+  '/knowledge-base': typeof AuthenticatedKnowledgeBaseRouteWithChildren
+  '/notifications': typeof AuthenticatedNotificationsRoute
+  '/reports': typeof AuthenticatedReportsRouteWithChildren
+  '/tickets': typeof AuthenticatedTicketsRoute
+  '/assignments/$assignmentId': typeof AuthenticatedAssignmentsAssignmentIdRoute
+  '/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/field-task/$assignmentId': typeof AuthenticatedFieldTaskAssignmentIdRoute
+  '/knowledge-base/$articleId': typeof AuthenticatedKnowledgeBaseArticleIdRoute
+  '/reports/average-resolution-time': typeof AuthenticatedReportsAverageResolutionTimeRoute
+  '/reports/engineer-performance': typeof AuthenticatedReportsEngineerPerformanceRoute
+  '/reports/open-ticket-status': typeof AuthenticatedReportsOpenTicketStatusRoute
+  '/reports/problematic-models': typeof AuthenticatedReportsProblematicModelsRoute
+  '/reports/recurring-issues': typeof AuthenticatedReportsRecurringIssuesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/auth': typeof AuthRoute
+  '/_authenticated/assignments': typeof AuthenticatedAssignmentsRouteWithChildren
+  '/_authenticated/attachments': typeof AuthenticatedAttachmentsRoute
+  '/_authenticated/catalog': typeof AuthenticatedCatalogRoute
+  '/_authenticated/customer-systems': typeof AuthenticatedCustomerSystemsRoute
+  '/_authenticated/customers': typeof AuthenticatedCustomersRouteWithChildren
+  '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/engineers': typeof AuthenticatedEngineersRoute
+  '/_authenticated/error-codes': typeof AuthenticatedErrorCodesRoute
+  '/_authenticated/knowledge-base': typeof AuthenticatedKnowledgeBaseRouteWithChildren
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
+  '/_authenticated/reports': typeof AuthenticatedReportsRouteWithChildren
+  '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
+  '/_authenticated/assignments/$assignmentId': typeof AuthenticatedAssignmentsAssignmentIdRoute
+  '/_authenticated/customers/$customerId': typeof AuthenticatedCustomersCustomerIdRoute
+  '/_authenticated/field-task/$assignmentId': typeof AuthenticatedFieldTaskAssignmentIdRoute
+  '/_authenticated/knowledge-base/$articleId': typeof AuthenticatedKnowledgeBaseArticleIdRoute
+  '/_authenticated/reports/average-resolution-time': typeof AuthenticatedReportsAverageResolutionTimeRoute
+  '/_authenticated/reports/engineer-performance': typeof AuthenticatedReportsEngineerPerformanceRoute
+  '/_authenticated/reports/open-ticket-status': typeof AuthenticatedReportsOpenTicketStatusRoute
+  '/_authenticated/reports/problematic-models': typeof AuthenticatedReportsProblematicModelsRoute
+  '/_authenticated/reports/recurring-issues': typeof AuthenticatedReportsRecurringIssuesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/assignments'
+    | '/attachments'
+    | '/catalog'
+    | '/customer-systems'
+    | '/customers'
+    | '/dashboard'
+    | '/engineers'
+    | '/error-codes'
+    | '/knowledge-base'
+    | '/notifications'
+    | '/reports'
+    | '/tickets'
+    | '/assignments/$assignmentId'
+    | '/customers/$customerId'
+    | '/field-task/$assignmentId'
+    | '/knowledge-base/$articleId'
+    | '/reports/average-resolution-time'
+    | '/reports/engineer-performance'
+    | '/reports/open-ticket-status'
+    | '/reports/problematic-models'
+    | '/reports/recurring-issues'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/auth'
+    | '/assignments'
+    | '/attachments'
+    | '/catalog'
+    | '/customer-systems'
+    | '/customers'
+    | '/dashboard'
+    | '/engineers'
+    | '/error-codes'
+    | '/knowledge-base'
+    | '/notifications'
+    | '/reports'
+    | '/tickets'
+    | '/assignments/$assignmentId'
+    | '/customers/$customerId'
+    | '/field-task/$assignmentId'
+    | '/knowledge-base/$articleId'
+    | '/reports/average-resolution-time'
+    | '/reports/engineer-performance'
+    | '/reports/open-ticket-status'
+    | '/reports/problematic-models'
+    | '/reports/recurring-issues'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/auth'
+    | '/_authenticated/assignments'
+    | '/_authenticated/attachments'
+    | '/_authenticated/catalog'
+    | '/_authenticated/customer-systems'
+    | '/_authenticated/customers'
+    | '/_authenticated/dashboard'
+    | '/_authenticated/engineers'
+    | '/_authenticated/error-codes'
+    | '/_authenticated/knowledge-base'
+    | '/_authenticated/notifications'
+    | '/_authenticated/reports'
+    | '/_authenticated/tickets'
+    | '/_authenticated/assignments/$assignmentId'
+    | '/_authenticated/customers/$customerId'
+    | '/_authenticated/field-task/$assignmentId'
+    | '/_authenticated/knowledge-base/$articleId'
+    | '/_authenticated/reports/average-resolution-time'
+    | '/_authenticated/reports/engineer-performance'
+    | '/_authenticated/reports/open-ticket-status'
+    | '/_authenticated/reports/problematic-models'
+    | '/_authenticated/reports/recurring-issues'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AuthRoute: typeof AuthRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,12 +353,276 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/tickets': {
+      id: '/_authenticated/tickets'
+      path: '/tickets'
+      fullPath: '/tickets'
+      preLoaderRoute: typeof AuthenticatedTicketsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/knowledge-base': {
+      id: '/_authenticated/knowledge-base'
+      path: '/knowledge-base'
+      fullPath: '/knowledge-base'
+      preLoaderRoute: typeof AuthenticatedKnowledgeBaseRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/error-codes': {
+      id: '/_authenticated/error-codes'
+      path: '/error-codes'
+      fullPath: '/error-codes'
+      preLoaderRoute: typeof AuthenticatedErrorCodesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/engineers': {
+      id: '/_authenticated/engineers'
+      path: '/engineers'
+      fullPath: '/engineers'
+      preLoaderRoute: typeof AuthenticatedEngineersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard': {
+      id: '/_authenticated/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/customers': {
+      id: '/_authenticated/customers'
+      path: '/customers'
+      fullPath: '/customers'
+      preLoaderRoute: typeof AuthenticatedCustomersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/customer-systems': {
+      id: '/_authenticated/customer-systems'
+      path: '/customer-systems'
+      fullPath: '/customer-systems'
+      preLoaderRoute: typeof AuthenticatedCustomerSystemsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/catalog': {
+      id: '/_authenticated/catalog'
+      path: '/catalog'
+      fullPath: '/catalog'
+      preLoaderRoute: typeof AuthenticatedCatalogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/attachments': {
+      id: '/_authenticated/attachments'
+      path: '/attachments'
+      fullPath: '/attachments'
+      preLoaderRoute: typeof AuthenticatedAttachmentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/assignments': {
+      id: '/_authenticated/assignments'
+      path: '/assignments'
+      fullPath: '/assignments'
+      preLoaderRoute: typeof AuthenticatedAssignmentsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/reports/recurring-issues': {
+      id: '/_authenticated/reports/recurring-issues'
+      path: '/recurring-issues'
+      fullPath: '/reports/recurring-issues'
+      preLoaderRoute: typeof AuthenticatedReportsRecurringIssuesRouteImport
+      parentRoute: typeof AuthenticatedReportsRoute
+    }
+    '/_authenticated/reports/problematic-models': {
+      id: '/_authenticated/reports/problematic-models'
+      path: '/problematic-models'
+      fullPath: '/reports/problematic-models'
+      preLoaderRoute: typeof AuthenticatedReportsProblematicModelsRouteImport
+      parentRoute: typeof AuthenticatedReportsRoute
+    }
+    '/_authenticated/reports/open-ticket-status': {
+      id: '/_authenticated/reports/open-ticket-status'
+      path: '/open-ticket-status'
+      fullPath: '/reports/open-ticket-status'
+      preLoaderRoute: typeof AuthenticatedReportsOpenTicketStatusRouteImport
+      parentRoute: typeof AuthenticatedReportsRoute
+    }
+    '/_authenticated/reports/engineer-performance': {
+      id: '/_authenticated/reports/engineer-performance'
+      path: '/engineer-performance'
+      fullPath: '/reports/engineer-performance'
+      preLoaderRoute: typeof AuthenticatedReportsEngineerPerformanceRouteImport
+      parentRoute: typeof AuthenticatedReportsRoute
+    }
+    '/_authenticated/reports/average-resolution-time': {
+      id: '/_authenticated/reports/average-resolution-time'
+      path: '/average-resolution-time'
+      fullPath: '/reports/average-resolution-time'
+      preLoaderRoute: typeof AuthenticatedReportsAverageResolutionTimeRouteImport
+      parentRoute: typeof AuthenticatedReportsRoute
+    }
+    '/_authenticated/knowledge-base/$articleId': {
+      id: '/_authenticated/knowledge-base/$articleId'
+      path: '/$articleId'
+      fullPath: '/knowledge-base/$articleId'
+      preLoaderRoute: typeof AuthenticatedKnowledgeBaseArticleIdRouteImport
+      parentRoute: typeof AuthenticatedKnowledgeBaseRoute
+    }
+    '/_authenticated/field-task/$assignmentId': {
+      id: '/_authenticated/field-task/$assignmentId'
+      path: '/field-task/$assignmentId'
+      fullPath: '/field-task/$assignmentId'
+      preLoaderRoute: typeof AuthenticatedFieldTaskAssignmentIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/customers/$customerId': {
+      id: '/_authenticated/customers/$customerId'
+      path: '/$customerId'
+      fullPath: '/customers/$customerId'
+      preLoaderRoute: typeof AuthenticatedCustomersCustomerIdRouteImport
+      parentRoute: typeof AuthenticatedCustomersRoute
+    }
+    '/_authenticated/assignments/$assignmentId': {
+      id: '/_authenticated/assignments/$assignmentId'
+      path: '/$assignmentId'
+      fullPath: '/assignments/$assignmentId'
+      preLoaderRoute: typeof AuthenticatedAssignmentsAssignmentIdRouteImport
+      parentRoute: typeof AuthenticatedAssignmentsRoute
+    }
   }
 }
 
+interface AuthenticatedAssignmentsRouteChildren {
+  AuthenticatedAssignmentsAssignmentIdRoute: typeof AuthenticatedAssignmentsAssignmentIdRoute
+}
+
+const AuthenticatedAssignmentsRouteChildren: AuthenticatedAssignmentsRouteChildren =
+  {
+    AuthenticatedAssignmentsAssignmentIdRoute:
+      AuthenticatedAssignmentsAssignmentIdRoute,
+  }
+
+const AuthenticatedAssignmentsRouteWithChildren =
+  AuthenticatedAssignmentsRoute._addFileChildren(
+    AuthenticatedAssignmentsRouteChildren,
+  )
+
+interface AuthenticatedCustomersRouteChildren {
+  AuthenticatedCustomersCustomerIdRoute: typeof AuthenticatedCustomersCustomerIdRoute
+}
+
+const AuthenticatedCustomersRouteChildren: AuthenticatedCustomersRouteChildren =
+  {
+    AuthenticatedCustomersCustomerIdRoute:
+      AuthenticatedCustomersCustomerIdRoute,
+  }
+
+const AuthenticatedCustomersRouteWithChildren =
+  AuthenticatedCustomersRoute._addFileChildren(
+    AuthenticatedCustomersRouteChildren,
+  )
+
+interface AuthenticatedKnowledgeBaseRouteChildren {
+  AuthenticatedKnowledgeBaseArticleIdRoute: typeof AuthenticatedKnowledgeBaseArticleIdRoute
+}
+
+const AuthenticatedKnowledgeBaseRouteChildren: AuthenticatedKnowledgeBaseRouteChildren =
+  {
+    AuthenticatedKnowledgeBaseArticleIdRoute:
+      AuthenticatedKnowledgeBaseArticleIdRoute,
+  }
+
+const AuthenticatedKnowledgeBaseRouteWithChildren =
+  AuthenticatedKnowledgeBaseRoute._addFileChildren(
+    AuthenticatedKnowledgeBaseRouteChildren,
+  )
+
+interface AuthenticatedReportsRouteChildren {
+  AuthenticatedReportsAverageResolutionTimeRoute: typeof AuthenticatedReportsAverageResolutionTimeRoute
+  AuthenticatedReportsEngineerPerformanceRoute: typeof AuthenticatedReportsEngineerPerformanceRoute
+  AuthenticatedReportsOpenTicketStatusRoute: typeof AuthenticatedReportsOpenTicketStatusRoute
+  AuthenticatedReportsProblematicModelsRoute: typeof AuthenticatedReportsProblematicModelsRoute
+  AuthenticatedReportsRecurringIssuesRoute: typeof AuthenticatedReportsRecurringIssuesRoute
+}
+
+const AuthenticatedReportsRouteChildren: AuthenticatedReportsRouteChildren = {
+  AuthenticatedReportsAverageResolutionTimeRoute:
+    AuthenticatedReportsAverageResolutionTimeRoute,
+  AuthenticatedReportsEngineerPerformanceRoute:
+    AuthenticatedReportsEngineerPerformanceRoute,
+  AuthenticatedReportsOpenTicketStatusRoute:
+    AuthenticatedReportsOpenTicketStatusRoute,
+  AuthenticatedReportsProblematicModelsRoute:
+    AuthenticatedReportsProblematicModelsRoute,
+  AuthenticatedReportsRecurringIssuesRoute:
+    AuthenticatedReportsRecurringIssuesRoute,
+}
+
+const AuthenticatedReportsRouteWithChildren =
+  AuthenticatedReportsRoute._addFileChildren(AuthenticatedReportsRouteChildren)
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAssignmentsRoute: typeof AuthenticatedAssignmentsRouteWithChildren
+  AuthenticatedAttachmentsRoute: typeof AuthenticatedAttachmentsRoute
+  AuthenticatedCatalogRoute: typeof AuthenticatedCatalogRoute
+  AuthenticatedCustomerSystemsRoute: typeof AuthenticatedCustomerSystemsRoute
+  AuthenticatedCustomersRoute: typeof AuthenticatedCustomersRouteWithChildren
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedEngineersRoute: typeof AuthenticatedEngineersRoute
+  AuthenticatedErrorCodesRoute: typeof AuthenticatedErrorCodesRoute
+  AuthenticatedKnowledgeBaseRoute: typeof AuthenticatedKnowledgeBaseRouteWithChildren
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
+  AuthenticatedReportsRoute: typeof AuthenticatedReportsRouteWithChildren
+  AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
+  AuthenticatedFieldTaskAssignmentIdRoute: typeof AuthenticatedFieldTaskAssignmentIdRoute
+}
+
+const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAssignmentsRoute: AuthenticatedAssignmentsRouteWithChildren,
+  AuthenticatedAttachmentsRoute: AuthenticatedAttachmentsRoute,
+  AuthenticatedCatalogRoute: AuthenticatedCatalogRoute,
+  AuthenticatedCustomerSystemsRoute: AuthenticatedCustomerSystemsRoute,
+  AuthenticatedCustomersRoute: AuthenticatedCustomersRouteWithChildren,
+  AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedEngineersRoute: AuthenticatedEngineersRoute,
+  AuthenticatedErrorCodesRoute: AuthenticatedErrorCodesRoute,
+  AuthenticatedKnowledgeBaseRoute: AuthenticatedKnowledgeBaseRouteWithChildren,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
+  AuthenticatedReportsRoute: AuthenticatedReportsRouteWithChildren,
+  AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
+  AuthenticatedFieldTaskAssignmentIdRoute:
+    AuthenticatedFieldTaskAssignmentIdRoute,
+}
+
+const AuthenticatedRouteRouteWithChildren =
+  AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AuthRoute: AuthRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
