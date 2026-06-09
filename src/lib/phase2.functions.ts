@@ -1880,6 +1880,8 @@ export const saveAttachmentMeta = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
     validateAttachmentInput(data);
+    await assertAttachableExists(supabase, data.attachable_type, data.attachable_id);
+    await assertStoragePathsExist(supabase, [data.file_path]);
 
     if (data.id) {
       const { error } = await supabase
