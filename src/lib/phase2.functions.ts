@@ -1533,7 +1533,7 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
         .select("id, lifecycle_state, quality_score_v2, decline_score, usage_count_total, last_success_at, needs_human_review")
         .in("id", articleIds);
       if (lifecycleError) throw new Error(`تعذر تحميل بيانات دورة حياة المعرفة: ${lifecycleError.message}`);
-      lifecycleMeta = new Map((lifecycleRows ?? []).map((row) => [row.id, row]));
+      lifecycleMeta = new Map((lifecycleRows ?? []).map((row: any) => [row.id, row]));
     }
 
     return baseRows.map((item) => {
@@ -2376,10 +2376,10 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
           .select("id, lifecycle_state, needs_human_review, review_priority, quality_score_v2, decline_score, usage_count_total, last_success_at")
           .in("id", rankedIds);
         if (lifecycleError) throw new Error(`تعذر تحميل حالة دورة الحياة: ${lifecycleError.message}`);
-        const lifecycleMap = new Map((lifecycleRows ?? []).map((row) => [row.id, row]));
+        const lifecycleMap = new Map((lifecycleRows ?? []).map((row: any) => [row.id, row]));
         ranked = ranked.map((item) => ({
-          ...item,
-          ...lifecycleMap.get(item.id),
+          ...(item as Record<string, unknown>),
+          ...((lifecycleMap.get(item.id) ?? {}) as Record<string, unknown>),
         }));
       }
       if (data.lifecycle_state) {
