@@ -501,7 +501,12 @@ function FieldTaskPage() {
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">تقييم المعرفة</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="مقال المعرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(data?.knowledge_articles ?? []).map((item: any) => <SelectItem key={item.id} value={item.id}>{item.title}</SelectItem>)}</SelectContent></Select>
+            <Select value={form.knowledge_base_id || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_base_id: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="مقال المعرفة" /></SelectTrigger><SelectContent><SelectItem value="none">بدون</SelectItem>{(data?.knowledge_articles ?? []).map((item: any) => <SelectItem key={item.id} value={item.id}>{item.title} • {item.effectiveness_rate ?? 0}% • استخدام {item.usage_count ?? 0}</SelectItem>)}</SelectContent></Select>
+            {form.knowledge_base_id && (
+              <p className="text-xs text-muted-foreground">
+                {(data?.knowledge_articles ?? []).find((item: any) => item.id === form.knowledge_base_id)?.match_reason ?? "اقتراح سياقي"}
+              </p>
+            )}
             <Select value={form.knowledge_feedback_rating || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_feedback_rating: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="نتيجة الحل" /></SelectTrigger><SelectContent><SelectItem value="none">بدون تقييم</SelectItem><SelectItem value="success">ناجح</SelectItem><SelectItem value="partial">جزئي</SelectItem><SelectItem value="failure">فاشل</SelectItem></SelectContent></Select>
             <Textarea placeholder="ملاحظات تقييم المعرفة" value={form.knowledge_feedback_notes} onChange={(e) => setForm((p) => ({ ...p, knowledge_feedback_notes: e.target.value }))} />
           </CardContent>
