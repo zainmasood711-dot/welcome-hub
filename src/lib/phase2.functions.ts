@@ -414,6 +414,78 @@ function normalizeText(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
+function normalizeErrorSignature(input: {
+  classification: ErrorIntelligenceClassification;
+  message: string;
+  errorCodeText?: string | null;
+}) {
+  const parts = [
+    input.classification,
+    normalizeText(input.errorCodeText) || "no-code",
+    normalizeText(input.message),
+  ];
+
+  return parts
+    .join("-")
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]+/gu, "")
+    .slice(0, 220);
+}
+
+function classifyRuntimeError(message: string): {
+  classification: ErrorIntelligenceClassification;
+  severity: ErrorIntelligenceSeverity;
+  actionHint: string;
+} {
+  const value = normalizeText(message);
+
+  if (/validation|required|invalid|صيغة|مطلوب|غير صالح/.test(value)) {
+    return {
+      classification: "validation_error",
+      severity: "medium",
+      actionHint: "تحقق من المدخلات الإلزامية وصيغ الحقول قبل إعادة التنفيذ.",
+    };
+  }
+
+  if (/upload|storage|رفع|file|bucket/.test(value)) {
+    return {
+      classification: "upload_error",
+      severity: "high",
+      actionHint: "تحقق من الاتصال ومسار التخزين وصلاحيات رفع الملفات.",
+    };
+  }
+
+  if (/sync|offline|network|timeout|مزامنة|انقطاع/.test(value)) {
+    return {
+      classification: "sync_error",
+      severity: "high",
+      actionHint: "راجع حالة الاتصال والطابور المؤجل وأعد المحاولة تلقائيًا.",
+    };
+  }
+
+  if (/workflow|transition|state|permission|صلاحية|انتقال/.test(value)) {
+    return {
+      classification: "workflow_error",
+      severity: "high",
+      actionHint: "راجع شروط الانتقال والصلاحيات وسياق الحالة الحالية قبل التنفيذ.",
+    };
+  }
+
+  if (/foreign key|constraint|inconsistent|orphan|مرجعي|غير متسق/.test(value)) {
+    return {
+      classification: "data_consistency_issue",
+      severity: "high",
+      actionHint: "تحقق من سلامة الربط بين السجلات وتناسق المفاتيح المرجعية.",
+    };
+  }
+
+  return {
+    classification: "application_error",
+    severity: "medium",
+    actionHint: "راجع سجل التنفيذ الكامل وسياق العملية قبل إعادة المحاولة.",
+  };
+}
+
 function calculateEffectivenessRate(successCount: number, failCount: number) {
   const total = successCount + failCount;
   if (total === 0) return 0;
