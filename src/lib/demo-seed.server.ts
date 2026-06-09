@@ -302,7 +302,6 @@ export async function seedDemoData(currentUserId?: string) {
         linked_ticket_ids: [],
         success_count: 12,
         fail_count: 2,
-        effectiveness_rate: 85.71,
         created_by: currentUserId ?? null,
       })
       .select("id")
