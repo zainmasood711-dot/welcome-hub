@@ -573,9 +573,9 @@ function FieldTaskPage() {
             {form.knowledge_base_id && (
               <div className="space-y-1 text-xs text-muted-foreground">
                 <p>{(data?.knowledge_articles ?? []).find((item: any) => item.id === form.knowledge_base_id)?.match_reason ?? "اقتراح سياقي"}</p>
-                <p>
-                  جودة: {Math.round((((data?.knowledge_articles ?? []).find((item: any) => item.id === form.knowledge_base_id)?.quality_score_v2 ?? 0) as number) * 100)}%
-                  {
+                <p>جودة: {Math.round((((data?.knowledge_articles ?? []).find((item: any) => item.id === form.knowledge_base_id)?.quality_score_v2 ?? 0) as number) * 100)}%</p>
+                <p>التدهور: {Math.round((((data?.knowledge_articles ?? []).find((item: any) => item.id === form.knowledge_base_id)?.decline_score ?? 0) as number) * 100)}%</p>
+              </div>
             )}
             <Select value={form.knowledge_feedback_rating || "none"} onValueChange={(value) => setForm((p) => ({ ...p, knowledge_feedback_rating: value === "none" ? "" : value }))}><SelectTrigger><SelectValue placeholder="نتيجة الحل" /></SelectTrigger><SelectContent><SelectItem value="none">بدون تقييم</SelectItem><SelectItem value="success">ناجح</SelectItem><SelectItem value="partial">جزئي</SelectItem><SelectItem value="failure">فاشل</SelectItem></SelectContent></Select>
             <Textarea placeholder="ملاحظات تقييم المعرفة" value={form.knowledge_feedback_notes} onChange={(e) => setForm((p) => ({ ...p, knowledge_feedback_notes: e.target.value }))} />
