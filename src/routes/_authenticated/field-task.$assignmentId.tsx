@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { supabase } from "@/integrations/supabase/client";
 import { requireRole } from "@/lib/auth-client";
-import { getAssignmentDetailsBundle, submitAssignmentFieldReportWorkflow } from "@/lib/phase2.functions";
+import { getAssignmentDetailsBundle, recordErrorIntelligenceEvent, submitAssignmentFieldReportWorkflow } from "@/lib/phase2.functions";
 
 export const Route = createFileRoute("/_authenticated/field-task/$assignmentId")({
   beforeLoad: async () => {
@@ -89,6 +89,7 @@ function FieldTaskPage() {
   const queryClient = useQueryClient();
   const detailsFn = useServerFn(getAssignmentDetailsBundle);
   const submitFn = useServerFn(submitAssignmentFieldReportWorkflow);
+  const recordErrorEventFn = useServerFn(recordErrorIntelligenceEvent);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
 
@@ -394,6 +395,24 @@ function FieldTaskPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "تعذر إرسال التقرير";
       setSubmitError(message);
+      void recordErrorEventFn({
+        data: {
+          classification: /upload|storage|رفع|file/i.test(message) ? "upload_error" : /sync|offline|network|timeout|انقطاع/i.test(message) ? "sync_error" : "workflow_error",
+          severity: /upload|storage|رفع|failed|فشل/i.test(message) ? "high" : "medium",
+          source: /upload|storage|رفع|file/i.test(message) ? "attachment_workflow" : /sync|offline|network|timeout|انقطاع/i.test(message) ? "offline_sync" : "assignment_workflow",
+          message,
+          details: {
+            assignment_id: assignmentId,
+            status: form.status,
+            photos_count: selectedImageFiles.length,
+            queued_reports: pendingQueueCount,
+            is_online: isOnline,
+          },
+          action_hint: "راجع حالة الاتصال ورفع المرفقات وصلاحيات التخزين قبل إعادة الإرسال.",
+          assignment_id: assignmentId,
+          knowledge_base_id: form.knowledge_base_id || null,
+        },
+      }).catch(() => undefined);
       if (selectedImageFiles.length > 0) {
         toast.error(`${message} - لم يتم إرسال التقرير لأن رفع الصور لم يكتمل. حاول مرة أخرى.`);
       } else if (!navigator.onLine || /network|failed|timeout/i.test(message)) {
