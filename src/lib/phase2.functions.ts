@@ -1415,7 +1415,6 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
           success_count: 0,
           partial_fail_count: 0,
           fail_count: 0,
-          effectiveness_rate: 0,
           created_by: userId,
         } as any)
         .select("id")
@@ -1698,7 +1697,6 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
         success_count: 0,
         partial_fail_count: 0,
         fail_count: 0,
-        effectiveness_rate: 0,
         created_by: userId,
       } as any)
       .select("id")
@@ -1762,7 +1760,6 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
           success_count: 0,
           partial_fail_count: 0,
           fail_count: 0,
-          effectiveness_rate: 0,
           created_by: userId,
         } as any)
         .select("id")
