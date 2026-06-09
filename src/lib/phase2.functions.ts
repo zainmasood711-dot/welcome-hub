@@ -277,26 +277,8 @@ const knowledgeListFiltersSchema = z.object({
   limit: z.number().int().min(1).max(300).default(200),
 });
 
-const knowledgeBaseSelectColumns = [
-  "id",
-  "title",
-  "issue_description",
-  "solution_steps",
-  "product_id",
-  "error_code_text",
-  "search_keywords",
-  "source",
-  "linked_ticket_ids",
-  "success_count",
-  "partial_fail_count",
-  "fail_count",
-  "effectiveness_rate",
-  "updated_at",
-  "freshness_score",
-  "confidence_score",
-  "verification_state",
-  "review_state",
-].join(", ");
+const knowledgeBaseSelectColumns =
+  "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state" as const;
 
 const createKnowledgeFromTicketSchema = z.object({
   ticket_id: z.string().uuid(),
@@ -1170,12 +1152,11 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { supabase } = context;
     const { data: rankedRows, error } = await supabase.rpc("search_knowledge_ranked", {
-      p_issue_text: data.issue_description ?? null,
-      p_affected_product_id: data.affected_product_id ?? null,
-      p_error_code_id: data.error_code_id ?? null,
-      p_error_code_text: data.error_code_text ?? null,
-      p_category_id: data.category_id ?? null,
-      p_customer_system_id: null,
+      p_issue_text: data.issue_description ?? undefined,
+      p_affected_product_id: data.affected_product_id ?? undefined,
+      p_error_code_id: data.error_code_id ?? undefined,
+      p_error_code_text: data.error_code_text ?? undefined,
+      p_category_id: data.category_id ?? undefined,
       p_sort_by: "relevance",
       p_limit: data.limit,
     });
@@ -1437,9 +1418,9 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
     const topLinkedTicket = (ticketsRes.data ?? [])[0];
     const { data: relatedRows, error: relatedError } = await supabase.rpc("search_knowledge_ranked", {
       p_issue_text: article.issue_description,
-      p_affected_product_id: article.product_id ?? topLinkedTicket?.affected_product_id ?? null,
-      p_error_code_text: article.error_code_text ?? topLinkedTicket?.error_code_text ?? null,
-      p_customer_system_id: topLinkedTicket?.customer_system_id ?? null,
+      p_affected_product_id: article.product_id ?? topLinkedTicket?.affected_product_id ?? undefined,
+      p_error_code_text: article.error_code_text ?? topLinkedTicket?.error_code_text ?? undefined,
+      p_customer_system_id: topLinkedTicket?.customer_system_id ?? undefined,
       p_sort_by: "relevance",
       p_limit: 6,
       p_exclude_knowledge_id: article.id,
