@@ -101,6 +101,10 @@ function FieldTaskPage() {
   const [pendingQueueCount, setPendingQueueCount] = useState(0);
   const [cachedBundle, setCachedBundle] = useState<any | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState<string | null>(null);
+  const [selectedImageFiles, setSelectedImageFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     status: "pending",
     work_done: "",
@@ -248,21 +252,79 @@ function FieldTaskPage() {
     }));
   }, [data?.assignment]);
 
-  const addPhoto = () => {
-    if (!form.photo_path.trim()) return;
-    if (!/\.(jpg|jpeg|png|webp)$/i.test(form.photo_path.trim())) {
-      toast.error("امتداد الصور يجب أن يكون jpg/png/webp");
+  const onPickPhotos = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) {
+      setSelectedImageFiles([]);
       return;
     }
-    setPhotos((prev) => [
-      ...prev,
-      {
-        file_path: form.photo_path.trim(),
-        original_name: form.photo_name.trim() || null,
-        file_size: form.photo_size ? Number(form.photo_size) : null,
-      },
-    ]);
-    setForm((prev) => ({ ...prev, photo_path: "", photo_name: "", photo_size: "" }));
+
+    const invalidExt = files.find((file) => !/\.(jpg|jpeg|png|webp)$/i.test(file.name));
+    if (invalidExt) {
+      toast.error("صيغة الصورة غير مدعومة. استخدم jpg أو png أو webp");
+      event.target.value = "";
+      return;
+    }
+
+    const invalidSize = files.find((file) => file.size > 15 * 1024 * 1024);
+    if (invalidSize) {
+      toast.error("حجم الصورة كبير جدًا. الحد الأقصى 15MB قبل الضغط");
+      event.target.value = "";
+      return;
+    }
+
+    setSelectedImageFiles(files);
+  };
+
+  const uploadSelectedPhotos = async () => {
+    if (selectedImageFiles.length === 0) return [] as Array<{ file_path: string; original_name: string | null; file_size: number | null }>;
+
+    const uploaded: Array<{ file_path: string; original_name: string | null; file_size: number | null }> = [];
+    setIsUploadingPhotos(true);
+    setUploadProgress(3);
+    setUploadStatusText("جاري تجهيز الصور للرفع...");
+
+    for (let index = 0; index < selectedImageFiles.length; index += 1) {
+      const originalFile = selectedImageFiles[index];
+      const compressedFile = await compressImageForMobile(originalFile);
+      if (compressedFile.size > MAX_IMAGE_BYTES) {
+        throw new Error(`الصورة ${originalFile.name} ما زالت كبيرة بعد الضغط (الحد 5MB)`);
+      }
+
+      const safeName = compressedFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const targetPath = `assignment/${assignmentId}/photos/${Date.now()}-${index + 1}-${safeName}`;
+
+      let uploadedOk = false;
+      let attempts = 0;
+      while (!uploadedOk && attempts < 3) {
+        attempts += 1;
+        const { error } = await supabase.storage.from("field-attachments").upload(targetPath, compressedFile, {
+          upsert: false,
+          contentType: compressedFile.type || undefined,
+        });
+
+        if (!error) {
+          uploadedOk = true;
+          uploaded.push({
+            file_path: targetPath,
+            original_name: originalFile.name,
+            file_size: compressedFile.size,
+          });
+          const completedRatio = (index + 1) / selectedImageFiles.length;
+          setUploadProgress(Math.round(5 + completedRatio * 95));
+          setUploadStatusText(`تم رفع ${index + 1} من ${selectedImageFiles.length} صورة`);
+        } else if (attempts < 3) {
+          setUploadStatusText(`تعثر رفع ${originalFile.name}، إعادة المحاولة (${attempts}/2)...`);
+          await wait(700 * attempts);
+        } else {
+          throw new Error(`فشل رفع ${originalFile.name} بعد 3 محاولات`);
+        }
+      }
+    }
+
+    setUploadProgress(100);
+    setUploadStatusText("اكتمل رفع الصور");
+    return uploaded;
   };
 
   const canSubmit = useMemo(() => {
@@ -300,7 +362,7 @@ function FieldTaskPage() {
       }
       return;
     }
-    const payload = buildPayload();
+    let payload = buildPayload();
 
     if (!isOnline) {
       enqueueReport(payload);
@@ -308,9 +370,21 @@ function FieldTaskPage() {
     }
 
     try {
+      if (selectedImageFiles.length > 0) {
+        const uploadedPhotos = await uploadSelectedPhotos();
+        payload = {
+          ...payload,
+          photos: [...photos, ...uploadedPhotos],
+        };
+      }
+
       await submitFn({ data: payload });
       toast.success("تم إرسال التقرير الميداني بنجاح");
       localStorage.removeItem(draftKey);
+      setPhotos(payload.photos);
+      setSelectedImageFiles([]);
+      setUploadProgress(0);
+      setUploadStatusText(null);
       queryClient.invalidateQueries({ queryKey: ["field-task", assignmentId] });
       queryClient.invalidateQueries({ queryKey: ["assignments"] });
     } catch (error) {
@@ -321,6 +395,8 @@ function FieldTaskPage() {
       } else {
         toast.error(message);
       }
+    } finally {
+      setIsUploadingPhotos(false);
     }
   };
 
