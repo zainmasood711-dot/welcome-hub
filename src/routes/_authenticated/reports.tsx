@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { AppShell } from "@/components/app/app-shell";
@@ -9,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { getOperationsReport } from "@/lib/phase2.functions";
+import { getOperationsReport, listErrorIntelligenceAlerts, updateErrorIntelligenceAlertStatus } from "@/lib/phase2.functions";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   beforeLoad: async () => {
@@ -20,10 +21,23 @@ export const Route = createFileRoute("/_authenticated/reports")({
 
 function ReportsPage() {
   const reportFn = useServerFn(getOperationsReport);
+  const listAlertsFn = useServerFn(listErrorIntelligenceAlerts);
+  const updateAlertStatusFn = useServerFn(updateErrorIntelligenceAlertStatus);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
 
   const { data, isLoading, error } = useQuery({ queryKey: ["operations-report"], queryFn: () => reportFn() });
+  const { data: alerts = [], refetch: refetchAlerts } = useQuery({ queryKey: ["error-intelligence-alerts"], queryFn: () => listAlertsFn() });
+
+  const handleUpdateAlertStatus = async (alertId: string, status: "acknowledged" | "resolved") => {
+    try {
+      await updateAlertStatusFn({ data: { alert_id: alertId, status } });
+      await refetchAlerts();
+      toast.success(status === "resolved" ? "تم إغلاق التنبيه" : "تم تأكيد التنبيه");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "تعذر تحديث حالة التنبيه");
+    }
+  };
 
   if (isLoading) {
     return (
