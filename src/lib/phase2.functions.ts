@@ -373,6 +373,13 @@ function calculateEffectivenessRate(successCount: number, failCount: number) {
   return Number(((successCount / total) * 100).toFixed(2));
 }
 
+function mapAssignmentStatusToTicketStatus(status: "pending" | "in_progress" | "completed" | "cancelled") {
+  if (status === "completed") return "closed" as const;
+  if (status === "in_progress") return "in_progress" as const;
+  if (status === "pending") return "assigned_field" as const;
+  return "in_progress" as const;
+}
+
 function splitStoragePath(path: string) {
   const normalized = path.trim().replace(/^\/+/, "");
   const lastSlashIndex = normalized.lastIndexOf("/");
