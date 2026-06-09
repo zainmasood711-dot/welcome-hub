@@ -914,27 +914,6 @@ export const saveTicket = createServerFn({ method: "POST" })
       if (shouldApplyKnowledgeOutcome) {
         const finalKnowledgeBaseId = knowledgeBaseId as string;
         const finalRating: "success" | "failure" = rating === "success" ? "success" : "failure";
-        const { data: kbRow, error: kbReadError } = await supabase
-          .from("knowledge_base")
-          .select("id, success_count, fail_count")
-          .eq("id", finalKnowledgeBaseId)
-          .single();
-        if (kbReadError) throw new Error(`تعذر تحديث إحصائيات المادة المعرفية: ${kbReadError.message}`);
-
-        const nextSuccess = kbRow.success_count + (finalRating === "success" ? 1 : 0);
-        const nextFail = kbRow.fail_count + (finalRating === "failure" ? 1 : 0);
-        const nextEffectiveness = calculateEffectivenessRate(nextSuccess, nextFail);
-
-        const { error: kbUpdateError } = await supabase
-          .from("knowledge_base")
-          .update({
-            success_count: nextSuccess,
-            fail_count: nextFail,
-            effectiveness_rate: nextEffectiveness,
-          })
-          .eq("id", kbRow.id);
-        if (kbUpdateError) throw new Error(`تعذر حفظ تقييم نجاح الحل: ${kbUpdateError.message}`);
-
         const { data: currentProfile } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
         if (currentProfile?.engineer_id) {
           const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
@@ -945,6 +924,8 @@ export const saveTicket = createServerFn({ method: "POST" })
             notes: data.knowledge_feedback_notes ?? null,
           });
           if (feedbackError) throw new Error(`تعذر تسجيل تقييم الحل: ${feedbackError.message}`);
+
+          await recalculateKnowledgeMetrics(supabase, finalKnowledgeBaseId);
         }
       }
 
@@ -1868,25 +1849,7 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
       });
       if (feedbackError) throw new Error(`تعذر حفظ تقييم المعرفة: ${feedbackError.message}`);
 
-      const { data: feedbackRows, error: feedbackRowsError } = await supabase
-        .from("knowledge_feedback")
-        .select("rating")
-        .eq("knowledge_base_id", data.knowledge_base_id);
-      if (feedbackRowsError) throw new Error(`تعذر تحديث إحصائيات المعرفة: ${feedbackRowsError.message}`);
-
-      const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
-      const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
-      const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
-
-      const { error: kbUpdateError } = await supabase
-        .from("knowledge_base")
-        .update({
-          success_count: successCount,
-          fail_count: failCount,
-          effectiveness_rate: effectivenessRate,
-        })
-        .eq("id", data.knowledge_base_id);
-      if (kbUpdateError) throw new Error(`تعذر تحديث فعالية مادة المعرفة: ${kbUpdateError.message}`);
+      await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
     }
 
     return { ok: true, attachments_count: attachmentRows.length };
