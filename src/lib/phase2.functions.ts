@@ -1727,14 +1727,7 @@ export const submitAssignmentReport = createServerFn({ method: "POST" })
     if (error) throw new Error(`تعذر إرسال تقرير المهمة: ${error.message}`);
 
     if (assignmentAccess.ticket_id) {
-      const nextTicketStatus =
-        data.status === "completed"
-          ? "closed"
-          : data.status === "in_progress"
-            ? "in_progress"
-            : data.status === "pending"
-              ? "assigned_field"
-              : "in_progress";
+      const nextTicketStatus = mapAssignmentStatusToTicketStatus(data.status);
 
       const { error: ticketUpdateError } = await supabase
         .from("tickets")
@@ -1813,14 +1806,7 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
     }
 
     if (assignmentAccess.ticket_id) {
-      const nextTicketStatus =
-        data.status === "completed"
-          ? "closed"
-          : data.status === "in_progress"
-            ? "in_progress"
-            : data.status === "pending"
-              ? "assigned_field"
-              : "in_progress";
+      const nextTicketStatus = mapAssignmentStatusToTicketStatus(data.status);
 
       const { error: ticketUpdateError } = await supabase
         .from("tickets")
