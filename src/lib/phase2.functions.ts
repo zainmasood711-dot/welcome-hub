@@ -1223,7 +1223,9 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
       .sort((a, b) => {
         if (a.priority_tier !== b.priority_tier) return a.priority_tier - b.priority_tier;
         if (a.keyword_hits !== b.keyword_hits) return b.keyword_hits - a.keyword_hits;
-        if (a.effectiveness_rate !== b.effectiveness_rate) return b.effectiveness_rate - a.effectiveness_rate;
+        if ((a.effectiveness_rate ?? 0) !== (b.effectiveness_rate ?? 0)) {
+          return (b.effectiveness_rate ?? 0) - (a.effectiveness_rate ?? 0);
+        }
         return (b.success_count + b.fail_count) - (a.success_count + a.fail_count);
       })
       .slice(0, data.limit);
@@ -2304,9 +2306,9 @@ export const getOperationsReport = createServerFn({ method: "GET" })
           id: article.id,
           title: article.title,
           usage_count: article.success_count + article.fail_count,
-          effectiveness_rate: article.effectiveness_rate,
+          effectiveness_rate: article.effectiveness_rate ?? 0,
         }))
-        .sort((a, b) => b.effectiveness_rate - a.effectiveness_rate)
+        .sort((a, b) => (b.effectiveness_rate ?? 0) - (a.effectiveness_rate ?? 0))
         .slice(0, 6),
     };
 
