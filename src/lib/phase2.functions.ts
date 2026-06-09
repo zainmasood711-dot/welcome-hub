@@ -273,9 +273,30 @@ const knowledgeListFiltersSchema = z.object({
   product_id: z.string().uuid().optional().nullable(),
   source: z.enum(["manual", "auto_from_ticket", "auto_from_assignment"]).optional().nullable(),
   min_effectiveness: z.number().min(0).max(100).optional().nullable(),
-  sort_by: z.enum(["newest", "effectiveness", "usage"]).default("newest"),
+  sort_by: z.enum(["relevance", "newest", "effectiveness", "usage", "freshness"]).default("relevance"),
   limit: z.number().int().min(1).max(300).default(200),
 });
+
+const knowledgeBaseSelectColumns = [
+  "id",
+  "title",
+  "issue_description",
+  "solution_steps",
+  "product_id",
+  "error_code_text",
+  "search_keywords",
+  "source",
+  "linked_ticket_ids",
+  "success_count",
+  "partial_fail_count",
+  "fail_count",
+  "effectiveness_rate",
+  "updated_at",
+  "freshness_score",
+  "confidence_score",
+  "verification_state",
+  "review_state",
+].join(", ");
 
 const createKnowledgeFromTicketSchema = z.object({
   ticket_id: z.string().uuid(),
@@ -1148,89 +1169,23 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
   .inputValidator((input) => knowledgeSearchSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase } = context;
-    const normalizedErrorCode = normalizeText(data.error_code_text);
-    const descriptionKeywords = extractImportantWords(data.issue_description);
+    const { data: rankedRows, error } = await supabase.rpc("search_knowledge_ranked", {
+      p_issue_text: data.issue_description ?? null,
+      p_affected_product_id: data.affected_product_id ?? null,
+      p_error_code_id: data.error_code_id ?? null,
+      p_error_code_text: data.error_code_text ?? null,
+      p_category_id: data.category_id ?? null,
+      p_customer_system_id: null,
+      p_sort_by: "relevance",
+      p_limit: data.limit,
+    });
 
-    const [errorCodeRefRes, productRefRes] = await Promise.all([
-      data.error_code_id
-        ? supabase.from("error_codes").select("id, code, category, product_id").eq("id", data.error_code_id).maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
-      data.affected_product_id
-        ? supabase.from("products").select("id, category_id").eq("id", data.affected_product_id).maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
-    ]);
-
-    if (errorCodeRefRes.error) throw new Error(`تعذر تحميل كود العطل المرجعي: ${errorCodeRefRes.error.message}`);
-    if (productRefRes.error) throw new Error(`تعذر تحميل المنتج المرجعي: ${productRefRes.error.message}`);
-
-    const selectedErrorCode = errorCodeRefRes.data;
-    const selectedCategoryId = data.category_id ?? productRefRes.data?.category_id ?? null;
-
-    const { data: rows, error } = await supabase
-      .from("knowledge_base")
-      .select("id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, effectiveness_rate, success_count, fail_count")
-      .order("effectiveness_rate", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(120);
     if (error) throw new Error(`تعذر البحث في قاعدة المعرفة: ${error.message}`);
 
-    const kbProductIds = Array.from(new Set((rows ?? []).map((row) => row.product_id).filter((id): id is string => !!id)));
-    const kbProductsRes = kbProductIds.length
-      ? await supabase.from("products").select("id, category_id").in("id", kbProductIds)
-      : { data: [], error: null };
-    if (kbProductsRes.error) throw new Error(`تعذر تحميل تصنيفات منتجات قاعدة المعرفة: ${kbProductsRes.error.message}`);
-
-    const kbProductCategoryMap = new Map((kbProductsRes.data ?? []).map((row) => [row.id, row.category_id]));
-
-    const ranked = (rows ?? [])
-      .map((item) => {
-        const sameProduct = !!data.affected_product_id && item.product_id === data.affected_product_id;
-        const sameError =
-          (!!normalizedErrorCode && normalizeText(item.error_code_text) === normalizedErrorCode) ||
-          (!!selectedErrorCode?.code && normalizeText(item.error_code_text) === normalizeText(selectedErrorCode.code));
-
-        const itemCategoryId = item.product_id ? (kbProductCategoryMap.get(item.product_id) ?? null) : null;
-
-        const sameCategory = !!selectedCategoryId && !!itemCategoryId && itemCategoryId === selectedCategoryId;
-
-        let priorityTier: 1 | 2 | 3 | 4 | null = null;
-        if (sameError && sameProduct) {
-          priorityTier = 1;
-        } else if (sameError) {
-          priorityTier = 2;
-        } else if (sameProduct) {
-          priorityTier = 3;
-        }
-
-        const searchable = `${item.title} ${item.issue_description} ${item.search_keywords ?? ""}`.toLowerCase();
-        const keywordHits = descriptionKeywords.filter((word) => searchable.includes(word)).length;
-        if (priorityTier === null && keywordHits > 0) {
-          priorityTier = 4;
-        }
-
-        if (priorityTier === null) return null;
-
-        const reasons: string[] = [];
-        if (sameError) reasons.push("نفس كود العطل المرتبط بالتذكرة");
-        if (sameCategory) reasons.push("نفس التصنيف المرتبط بالتذكرة");
-        if (sameProduct) reasons.push("نفس المنتج/الموديل");
-        if (priorityTier === 4 && keywordHits > 0) reasons.push(`تطابق كلمات وصف المشكلة (${keywordHits})`);
-
-        const matchReason = reasons.length > 0 ? reasons.join(" + ") : "تطابق عام في قاعدة المعرفة";
-        return { ...item, priority_tier: priorityTier, keyword_hits: keywordHits, match_reason: matchReason };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((a, b) => {
-        if (a.priority_tier !== b.priority_tier) return a.priority_tier - b.priority_tier;
-        if (a.keyword_hits !== b.keyword_hits) return b.keyword_hits - a.keyword_hits;
-        if ((a.effectiveness_rate ?? 0) !== (b.effectiveness_rate ?? 0)) {
-          return (b.effectiveness_rate ?? 0) - (a.effectiveness_rate ?? 0);
-        }
-        return (b.success_count + b.fail_count) - (a.success_count + a.fail_count);
-      })
-      .slice(0, data.limit);
-
-    return ranked;
+    return (rankedRows ?? []).map((item) => ({
+      ...item,
+      match_reason: item.match_reason || "تطابق سياقي",
+    }));
   });
 
 export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" })
@@ -1437,7 +1392,11 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     const { supabase } = context;
 
-    const { data: article, error: articleError } = await supabase.from("knowledge_base").select("*").eq("id", data.article_id).single();
+    const { data: article, error: articleError } = await supabase
+      .from("knowledge_base")
+      .select(knowledgeBaseSelectColumns)
+      .eq("id", data.article_id)
+      .single();
     if (articleError) throw new Error(`تعذر تحميل المادة المعرفية: ${articleError.message}`);
 
     const linkedTicketIds = Array.isArray(article.linked_ticket_ids)
@@ -1448,7 +1407,7 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
       linkedTicketIds.length
         ? supabase
             .from("tickets")
-            .select("id, status, priority, description, created_at")
+            .select("id, status, priority, description, created_at, customer_system_id, affected_product_id, error_code_text")
             .in("id", linkedTicketIds)
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
@@ -1475,11 +1434,24 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
     const failCount = feedbackRows.filter((row) => row.rating === "failure").length;
     const partialCount = feedbackRows.filter((row) => row.rating === "partial").length;
 
+    const topLinkedTicket = (ticketsRes.data ?? [])[0];
+    const { data: relatedRows, error: relatedError } = await supabase.rpc("search_knowledge_ranked", {
+      p_issue_text: article.issue_description,
+      p_affected_product_id: article.product_id ?? topLinkedTicket?.affected_product_id ?? null,
+      p_error_code_text: article.error_code_text ?? topLinkedTicket?.error_code_text ?? null,
+      p_customer_system_id: topLinkedTicket?.customer_system_id ?? null,
+      p_sort_by: "relevance",
+      p_limit: 6,
+      p_exclude_knowledge_id: article.id,
+    });
+    if (relatedError) throw new Error(`تعذر تحميل المقالات المرتبطة: ${relatedError.message}`);
+
     return {
       article,
       linked_tickets: ticketsRes.data ?? [],
       feedback: feedbackRows,
       attachments: attachmentsRes.data ?? [],
+      related_articles: relatedRows ?? [],
       metrics: {
         success_count: successCount,
         fail_count: failCount,
