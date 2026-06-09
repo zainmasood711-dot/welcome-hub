@@ -1614,7 +1614,7 @@ export const updateErrorIntelligenceAlertStatus = createServerFn({ method: "POST
   .inputValidator((input) => updateErrorAlertStatusSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    await assertSupportOrManagerRole(supabase, userId);
+    await assertSupportRole(supabase, userId);
 
     const patch: Record<string, string | null> = { status: data.status };
     if (data.status === "acknowledged") patch.acknowledged_at = new Date().toISOString();
