@@ -1614,7 +1614,7 @@ export const updateErrorIntelligenceAlertStatus = createServerFn({ method: "POST
   .inputValidator((input) => updateErrorAlertStatusSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    await assertSupportOrManagerRole(supabase, userId);
+    await assertSupportRole(supabase, userId);
 
     const patch: Record<string, string | null> = { status: data.status };
     if (data.status === "acknowledged") patch.acknowledged_at = new Date().toISOString();
@@ -1644,12 +1644,24 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
       throw new Error("أضف ملاحظات حل واضحة في التذكرة قبل تحويلها لمادة معرفية");
     }
 
-    const { data: existingArticles, error: existingError } = await supabase
+    let existingArticlesQuery = supabase
       .from("knowledge_base")
       .select("id, solution_steps, lifecycle_state")
-      .eq("product_id", ticket.affected_product_id ?? "00000000-0000-0000-0000-000000000000")
-      .eq("error_code_text", ticket.error_code_text ?? "")
       .limit(25);
+
+    if (ticket.affected_product_id) {
+      existingArticlesQuery = existingArticlesQuery.eq("product_id", ticket.affected_product_id);
+    } else {
+      existingArticlesQuery = existingArticlesQuery.is("product_id", null);
+    }
+
+    if (ticket.error_code_text?.trim()) {
+      existingArticlesQuery = existingArticlesQuery.eq("error_code_text", ticket.error_code_text.trim());
+    } else {
+      existingArticlesQuery = existingArticlesQuery.is("error_code_text", null);
+    }
+
+    const { data: existingArticles, error: existingError } = await existingArticlesQuery;
     if (existingError) throw new Error(`تعذر التحقق من تكرار المادة: ${existingError.message}`);
 
     const normalizedSolution = normalizeText(solutionNotes);

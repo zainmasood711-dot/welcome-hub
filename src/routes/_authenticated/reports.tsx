@@ -25,11 +25,13 @@ function ReportsPage() {
   const updateAlertStatusFn = useServerFn(updateErrorIntelligenceAlertStatus);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
+  const canManageAlerts = roles.includes("support_engineer");
 
   const { data, isLoading, error } = useQuery({ queryKey: ["operations-report"], queryFn: () => reportFn() });
   const { data: alerts = [], refetch: refetchAlerts } = useQuery({ queryKey: ["error-intelligence-alerts"], queryFn: () => listAlertsFn() });
 
   const handleUpdateAlertStatus = async (alertId: string, status: "acknowledged" | "resolved") => {
+    if (!canManageAlerts) return;
     try {
       await updateAlertStatusFn({ data: { alert_id: alertId, status } });
       await refetchAlerts();
@@ -104,10 +106,10 @@ function ReportsPage() {
                       <TableCell>{new Date(alert.last_detected_at).toLocaleDateString("ar-EG")}</TableCell>
                       <TableCell className="text-left">
                         <div className="flex gap-2">
-                          {alert.status === "open" && (
+                          {canManageAlerts && alert.status === "open" && (
                             <Button size="sm" variant="outline" onClick={() => void handleUpdateAlertStatus(alert.id, "acknowledged")}>تأكيد</Button>
                           )}
-                          {alert.status !== "resolved" && (
+                          {canManageAlerts && alert.status !== "resolved" && (
                             <Button size="sm" onClick={() => void handleUpdateAlertStatus(alert.id, "resolved")}>حل</Button>
                           )}
                         </div>
