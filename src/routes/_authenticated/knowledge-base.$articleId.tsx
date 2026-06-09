@@ -28,6 +28,15 @@ type KnowledgeArticleDetailsPayload = {
     search_keywords: string | null;
     source: string;
     updated_at: string;
+    lifecycle_state?: string;
+    quality_score_v2?: number;
+    decline_score?: number;
+    review_priority?: number;
+    needs_human_review?: boolean;
+    usage_count_total?: number;
+    last_success_at?: string | null;
+    last_failure_at?: string | null;
+    last_used_at?: string | null;
   };
   linked_tickets: Array<{ id: string; status: string; priority: string; description: string }>;
   feedback: Array<{ id: string; ticket_id: string | null; rating: string | null; notes: string | null; created_at: string }>;
@@ -93,9 +102,18 @@ function KnowledgeArticleDetailsPage() {
           <CardContent className="space-y-2">
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary">المصدر: {article?.source === "auto_from_ticket" ? "من تذكرة/مهمة" : "يدوي"}</Badge>
+              <Badge>{article?.lifecycle_state ?? "draft"}</Badge>
+              <Badge variant="outline">الجودة: {Math.round(((article?.quality_score_v2 ?? 0) as number) * 100)}%</Badge>
+              <Badge variant="outline">التدهور: {Math.round(((article?.decline_score ?? 0) as number) * 100)}%</Badge>
               <Badge variant="outline">النجاح: {details?.metrics.success_count ?? 0}</Badge>
               <Badge variant="outline">الإخفاق: {details?.metrics.fail_count ?? 0}</Badge>
+              <Badge variant="outline">الاستخدام: {article?.usage_count_total ?? details?.metrics.success_count ?? 0}</Badge>
               <Badge>الفاعلية: {details?.metrics.effectiveness_rate ?? 0}%</Badge>
+            </div>
+            <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground md:grid-cols-3">
+              <div>آخر نجاح: {article?.last_success_at ? new Date(article.last_success_at).toLocaleDateString("ar-EG") : "—"}</div>
+              <div>آخر فشل: {article?.last_failure_at ? new Date(article.last_failure_at).toLocaleDateString("ar-EG") : "—"}</div>
+              <div>آخر استخدام: {article?.last_used_at ? new Date(article.last_used_at).toLocaleDateString("ar-EG") : "—"}</div>
             </div>
           </CardContent>
         </Card>

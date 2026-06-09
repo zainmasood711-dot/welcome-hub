@@ -221,6 +221,93 @@ function ReportsPage() {
             </CardContent>
           </Card>
         </section>
+
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle className="text-base">مقالات متراجعة / منخفضة الجودة</CardTitle></CardHeader>
+            <CardContent className="rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>المادة</TableHead><TableHead>الحالة</TableHead><TableHead>التدهور</TableHead><TableHead>الفاعلية</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(data?.knowledgeBaseUsage?.decliningArticles ?? []).map((item) => (
+                    <TableRow key={`${item.id}-decline`}>
+                      <TableCell>{item.title}</TableCell>
+                      <TableCell>{item.lifecycle_state}</TableCell>
+                      <TableCell>{Math.round((item.decline_score ?? 0) * 100)}%</TableCell>
+                      <TableCell>{item.effectiveness_rate}%</TableCell>
+                    </TableRow>
+                  ))}
+                  {(data?.knowledgeBaseUsage?.decliningArticles ?? []).length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">لا توجد مواد متراجعة حالياً.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">المعرفة التي تحتاج مراجعة</CardTitle></CardHeader>
+            <CardContent className="rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>المادة</TableHead><TableHead>الحالة</TableHead><TableHead>أولوية المراجعة</TableHead><TableHead>الجودة</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(data?.knowledgeBaseUsage?.staleNeedingReview ?? []).map((item) => (
+                    <TableRow key={`${item.id}-review`}>
+                      <TableCell>{item.title}</TableCell>
+                      <TableCell>{item.lifecycle_state}</TableCell>
+                      <TableCell>{item.review_priority}</TableCell>
+                      <TableCell>{Math.round((item.quality_score_v2 ?? 0) * 100)}%</TableCell>
+                    </TableRow>
+                  ))}
+                  {(data?.knowledgeBaseUsage?.staleNeedingReview ?? []).length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">لا توجد مواد عالقة بالمراجعة.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle className="text-base">أنماط غير محلولة بدون تغطية معرفية جيدة</CardTitle></CardHeader>
+            <CardContent className="rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>رمز الخطأ</TableHead><TableHead>عدد غير المحلول</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(data?.unresolvedWithoutKnowledgeCoverage ?? []).map((item) => (
+                    <TableRow key={item.error_code_text}><TableCell>{item.error_code_text}</TableCell><TableCell>{item.unresolved_count}</TableCell></TableRow>
+                  ))}
+                  {(data?.unresolvedWithoutKnowledgeCoverage ?? []).length === 0 && (
+                    <TableRow><TableCell colSpan={2} className="py-6 text-center text-muted-foreground">لا توجد فجوات تغطية حرجة حاليًا.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">موديلات بضعف تغطية المعرفة</CardTitle></CardHeader>
+            <CardContent className="rounded-lg border">
+              <Table>
+                <TableHeader><TableRow><TableHead>الموديل</TableHead><TableHead>غير المحلول</TableHead><TableHead>تغطية موثقة</TableHead><TableHead>فجوة التغطية</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {(data?.poorCoverageByProduct ?? []).map((item) => (
+                    <TableRow key={item.product_id}>
+                      <TableCell>{item.model}</TableCell>
+                      <TableCell>{item.unresolved_count}</TableCell>
+                      <TableCell>{item.verified_coverage_count}</TableCell>
+                      <TableCell>{item.coverage_gap_score}</TableCell>
+                    </TableRow>
+                  ))}
+                  {(data?.poorCoverageByProduct ?? []).length === 0 && (
+                    <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">لا توجد فجوات تغطية ظاهرة.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </section>
       </div>
     </AppShell>
   );

@@ -713,15 +713,19 @@ export type Database = {
       }
       knowledge_base: {
         Row: {
+          archived_at: string | null
           classification_metadata: Json
           confidence_level: string
           confidence_score: number
+          conflict_flag: boolean
           content_source: string
           created_at: string
           created_by: string | null
+          decline_score: number
           dedupe_signature: string | null
           derived_resolution_type: string | null
           duplicate_of: string | null
+          duplicate_similarity_score: number
           effectiveness_rate: number | null
           error_code_text: string | null
           fail_count: number
@@ -729,12 +733,20 @@ export type Database = {
           id: string
           issue_description: string | null
           last_enriched_at: string
+          last_failure_at: string | null
           last_reviewed_at: string | null
+          last_success_at: string | null
+          last_used_at: string | null
+          lifecycle_state: string
           linked_ticket_ids: string[]
+          needs_human_review: boolean
           normalized_tags: string[]
           partial_fail_count: number
           product_id: string | null
           quality_score: number
+          quality_score_v2: number
+          review_notes: string | null
+          review_priority: number
           review_state: string
           search_keywords: string | null
           search_vector: unknown
@@ -743,18 +755,23 @@ export type Database = {
           success_count: number
           title: string
           updated_at: string
+          usage_count_total: number
           verification_state: string
         }
         Insert: {
+          archived_at?: string | null
           classification_metadata?: Json
           confidence_level?: string
           confidence_score?: number
+          conflict_flag?: boolean
           content_source?: string
           created_at?: string
           created_by?: string | null
+          decline_score?: number
           dedupe_signature?: string | null
           derived_resolution_type?: string | null
           duplicate_of?: string | null
+          duplicate_similarity_score?: number
           effectiveness_rate?: number | null
           error_code_text?: string | null
           fail_count?: number
@@ -762,12 +779,20 @@ export type Database = {
           id?: string
           issue_description?: string | null
           last_enriched_at?: string
+          last_failure_at?: string | null
           last_reviewed_at?: string | null
+          last_success_at?: string | null
+          last_used_at?: string | null
+          lifecycle_state?: string
           linked_ticket_ids?: string[]
+          needs_human_review?: boolean
           normalized_tags?: string[]
           partial_fail_count?: number
           product_id?: string | null
           quality_score?: number
+          quality_score_v2?: number
+          review_notes?: string | null
+          review_priority?: number
           review_state?: string
           search_keywords?: string | null
           search_vector?: unknown
@@ -776,18 +801,23 @@ export type Database = {
           success_count?: number
           title: string
           updated_at?: string
+          usage_count_total?: number
           verification_state?: string
         }
         Update: {
+          archived_at?: string | null
           classification_metadata?: Json
           confidence_level?: string
           confidence_score?: number
+          conflict_flag?: boolean
           content_source?: string
           created_at?: string
           created_by?: string | null
+          decline_score?: number
           dedupe_signature?: string | null
           derived_resolution_type?: string | null
           duplicate_of?: string | null
+          duplicate_similarity_score?: number
           effectiveness_rate?: number | null
           error_code_text?: string | null
           fail_count?: number
@@ -795,12 +825,20 @@ export type Database = {
           id?: string
           issue_description?: string | null
           last_enriched_at?: string
+          last_failure_at?: string | null
           last_reviewed_at?: string | null
+          last_success_at?: string | null
+          last_used_at?: string | null
+          lifecycle_state?: string
           linked_ticket_ids?: string[]
+          needs_human_review?: boolean
           normalized_tags?: string[]
           partial_fail_count?: number
           product_id?: string | null
           quality_score?: number
+          quality_score_v2?: number
+          review_notes?: string | null
+          review_priority?: number
           review_state?: string
           search_keywords?: string | null
           search_vector?: unknown
@@ -809,6 +847,7 @@ export type Database = {
           success_count?: number
           title?: string
           updated_at?: string
+          usage_count_total?: number
           verification_state?: string
         }
         Relationships: [
@@ -1404,6 +1443,10 @@ export type Database = {
           p_message: string
         }
         Returns: string
+      }
+      recompute_knowledge_lifecycle: {
+        Args: { _knowledge_id: string }
+        Returns: undefined
       }
       search_knowledge_ranked: {
         Args: {

@@ -276,9 +276,17 @@ const knowledgeListFiltersSchema = z.object({
   search: z.string().trim().max(200).optional().nullable(),
   product_id: z.string().uuid().optional().nullable(),
   source: z.enum(["manual", "auto_from_ticket", "auto_from_assignment"]).optional().nullable(),
+  lifecycle_state: z.enum(["draft", "verified", "needs_review", "low_confidence", "archived"]).optional().nullable(),
+  needs_human_review: z.boolean().optional().nullable(),
   min_effectiveness: z.number().min(0).max(100).optional().nullable(),
-  sort_by: z.enum(["relevance", "newest", "effectiveness", "usage", "freshness"]).default("relevance"),
+  sort_by: z.enum(["relevance", "newest", "effectiveness", "usage", "freshness", "review_priority", "quality"]).default("relevance"),
   limit: z.number().int().min(1).max(300).default(200),
+});
+
+const knowledgeLifecycleUpdateSchema = z.object({
+  article_id: z.string().uuid(),
+  action: z.enum(["verify", "needs_review", "low_confidence", "archive", "restore_draft"]),
+  review_notes: z.string().trim().max(2000).optional().nullable(),
 });
 
 const createKnowledgeFromTicketSchema = z.object({
@@ -573,13 +581,50 @@ async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, k
   const partialCount = (feedbackRows ?? []).filter((row) => row.rating === "partial").length;
   const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
 
+  const usageCountTotal = successCount + failCount + partialCount;
+  const nowIso = new Date().toISOString();
+  let lifecycleState: "draft" | "verified" | "needs_review" | "low_confidence" | "archived" = "draft";
+
+  if (usageCountTotal === 0) {
+    lifecycleState = "draft";
+  } else if (effectivenessRate < 35 || failCount >= successCount + 2) {
+    lifecycleState = "low_confidence";
+  } else if (effectivenessRate < 65 || (failCount > 0 && failCount >= successCount)) {
+    lifecycleState = "needs_review";
+  } else {
+    lifecycleState = "verified";
+  }
+
   const { error: updateError } = await supabase
     .from("knowledge_base")
     .update({
       success_count: successCount,
       fail_count: failCount,
-      partial_count: partialCount,
+      partial_fail_count: partialCount,
       effectiveness_rate: effectivenessRate,
+      usage_count_total: usageCountTotal,
+      last_used_at: usageCountTotal > 0 ? nowIso : null,
+      last_success_at: successCount > 0 ? nowIso : null,
+      last_failure_at: failCount > 0 ? nowIso : null,
+      lifecycle_state: lifecycleState,
+      verification_state: lifecycleState === "verified" ? "verified" : "needs_review",
+      review_state: lifecycleState === "verified" ? "approved" : "pending",
+      needs_human_review: lifecycleState === "needs_review" || lifecycleState === "low_confidence",
+      review_priority:
+        lifecycleState === "low_confidence"
+          ? 85
+          : lifecycleState === "needs_review"
+            ? 65
+            : lifecycleState === "draft"
+              ? 30
+              : 10,
+      decline_score: usageCountTotal === 0 ? 0 : Number(Math.min(1, Math.max(0, (failCount - successCount) / Math.max(1, usageCountTotal))).toFixed(2)),
+      quality_score_v2: Number(
+        Math.min(
+          1,
+          Math.max(0, 0.2 + (effectivenessRate / 100) * 0.55 + Math.min(usageCountTotal, 20) / 20 * 0.25),
+        ).toFixed(2),
+      ),
     } as any)
     .eq("id", knowledgeBaseId);
   if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
@@ -1368,7 +1413,7 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
           source: "auto_from_ticket",
           linked_ticket_ids: [createdTicket.id],
           success_count: 0,
-          partial_count: 0,
+          partial_fail_count: 0,
           fail_count: 0,
           effectiveness_rate: 0,
           created_by: userId,
@@ -1479,10 +1524,31 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
 
     if (error) throw new Error(`تعذر البحث في قاعدة المعرفة: ${error.message}`);
 
-    return (rankedRows ?? []).map((item) => ({
-      ...item,
-      match_reason: item.match_reason || "تطابق سياقي",
-    }));
+    const baseRows = (rankedRows ?? []) as any[];
+    const articleIds = baseRows.map((item) => item.id).filter(Boolean);
+    let lifecycleMeta = new Map<string, any>();
+    if (articleIds.length > 0) {
+      const { data: lifecycleRows, error: lifecycleError } = await supabase
+        .from("knowledge_base")
+        .select("id, lifecycle_state, quality_score_v2, decline_score, usage_count_total, last_success_at, needs_human_review")
+        .in("id", articleIds);
+      if (lifecycleError) throw new Error(`تعذر تحميل بيانات دورة حياة المعرفة: ${lifecycleError.message}`);
+      lifecycleMeta = new Map((lifecycleRows ?? []).map((row) => [row.id, row]));
+    }
+
+    return baseRows.map((item) => {
+      const meta = lifecycleMeta.get(item.id);
+      return {
+        ...item,
+        match_reason: item.match_reason || "تطابق سياقي",
+        lifecycle_state: meta?.lifecycle_state ?? "draft",
+        quality_score_v2: meta?.quality_score_v2 ?? null,
+        decline_score: meta?.decline_score ?? null,
+        usage_count_total: meta?.usage_count_total ?? item.usage_count ?? 0,
+        last_success_at: meta?.last_success_at ?? null,
+        needs_human_review: meta?.needs_human_review ?? false,
+      };
+    });
   });
 
 export const recordErrorIntelligenceEvent = createServerFn({ method: "POST" })
@@ -1580,7 +1646,7 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
 
     const { data: existingArticles, error: existingError } = await supabase
       .from("knowledge_base")
-      .select("id, solution_steps")
+      .select("id, solution_steps, lifecycle_state")
       .eq("product_id", ticket.affected_product_id ?? "00000000-0000-0000-0000-000000000000")
       .eq("error_code_text", ticket.error_code_text ?? "")
       .limit(25);
@@ -1613,9 +1679,12 @@ export const createKnowledgeArticleFromTicket = createServerFn({ method: "POST" 
         error_code_text: ticket.error_code_text ?? null,
         search_keywords: generatedKeywords || null,
         source: "auto_from_ticket",
+        lifecycle_state: "draft",
+        needs_human_review: true,
+        review_priority: 35,
         linked_ticket_ids: [ticket.id],
         success_count: 0,
-        partial_count: 0,
+        partial_fail_count: 0,
         fail_count: 0,
         effectiveness_rate: 0,
         created_by: userId,
@@ -1674,9 +1743,12 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
           error_code_text: ticket.error_code_text ?? null,
           search_keywords: generatedKeywords || null,
           source: "auto_from_ticket",
+          lifecycle_state: "draft",
+          needs_human_review: true,
+          review_priority: 35,
           linked_ticket_ids: [ticket.id],
           success_count: 0,
-          partial_count: 0,
+          partial_fail_count: 0,
           fail_count: 0,
           effectiveness_rate: 0,
           created_by: userId,
@@ -1738,9 +1810,12 @@ export const createKnowledgeArticleFromContext = createServerFn({ method: "POST"
         error_code_text: ticket?.error_code_text ?? null,
         search_keywords: generatedKeywords || null,
         source: "auto_from_assignment",
+        lifecycle_state: "draft",
+        needs_human_review: true,
+        review_priority: 40,
         linked_ticket_ids: ticket?.id ? [ticket.id] : [],
         success_count: 0,
-        partial_count: 0,
+        partial_fail_count: 0,
         fail_count: 0,
         effectiveness_rate: 0,
         created_by: userId,
@@ -1766,7 +1841,7 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
     const { data: article, error: articleError } = await supabase
       .from("knowledge_base")
       .select(
-        "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state",
+        "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state, lifecycle_state, needs_human_review, review_priority, quality_score_v2, decline_score, usage_count_total, last_success_at, last_failure_at, last_used_at",
       )
       .eq("id", data.article_id)
       .single();
@@ -2293,18 +2368,40 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
         p_limit: data.limit,
       });
       if (rankedError) throw new Error(`تعذر تحميل قاعدة المعرفة: ${rankedError.message}`);
-      return rankedRows ?? [];
+      let ranked: any[] = (rankedRows ?? []) as any[];
+      const rankedIds = ranked.map((item) => item.id).filter(Boolean);
+      if (rankedIds.length > 0) {
+        const { data: lifecycleRows, error: lifecycleError } = await supabase
+          .from("knowledge_base")
+          .select("id, lifecycle_state, needs_human_review, review_priority, quality_score_v2, decline_score, usage_count_total, last_success_at")
+          .in("id", rankedIds);
+        if (lifecycleError) throw new Error(`تعذر تحميل حالة دورة الحياة: ${lifecycleError.message}`);
+        const lifecycleMap = new Map((lifecycleRows ?? []).map((row) => [row.id, row]));
+        ranked = ranked.map((item) => ({
+          ...item,
+          ...lifecycleMap.get(item.id),
+        }));
+      }
+      if (data.lifecycle_state) {
+        ranked = ranked.filter((item: any) => item.lifecycle_state === data.lifecycle_state);
+      }
+      if (data.needs_human_review != null) {
+        ranked = ranked.filter((item: any) => Boolean(item.needs_human_review) === data.needs_human_review);
+      }
+      return ranked as any[];
     }
 
     let query = supabase
       .from("knowledge_base")
       .select(
-        "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state",
+        "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state, lifecycle_state, needs_human_review, review_priority, usage_count_total, last_success_at, quality_score_v2, decline_score",
       )
       .limit(data.limit);
 
     if (data.product_id) query = query.eq("product_id", data.product_id);
     if (data.source) query = query.eq("source", data.source);
+    if (data.lifecycle_state) query = query.eq("lifecycle_state", data.lifecycle_state);
+    if (data.needs_human_review != null) query = query.eq("needs_human_review", data.needs_human_review);
     if (data.min_effectiveness != null) query = query.gte("effectiveness_rate", data.min_effectiveness);
     if (data.sort_by === "effectiveness") {
       query = query.order("effectiveness_rate", { ascending: false }).order("created_at", { ascending: false });
@@ -2312,13 +2409,17 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
       query = query.order("success_count", { ascending: false }).order("created_at", { ascending: false });
     } else if (data.sort_by === "freshness") {
       query = query.order("freshness_score", { ascending: false }).order("updated_at", { ascending: false });
+    } else if (data.sort_by === "review_priority") {
+      query = query.order("review_priority", { ascending: false }).order("updated_at", { ascending: false });
+    } else if (data.sort_by === "quality") {
+      query = query.order("quality_score_v2", { ascending: false }).order("updated_at", { ascending: false });
     } else {
       query = query.order("created_at", { ascending: false });
     }
 
     const { data: rows, error } = await query;
     if (error) throw new Error(`تعذر تحميل قاعدة المعرفة: ${error.message}`);
-    return rows ?? [];
+    return (rows ?? []) as any[];
   });
 
 export const saveKnowledgeBase = createServerFn({ method: "POST" })
@@ -2347,7 +2448,7 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
           source: data.source,
           linked_ticket_ids: data.linked_ticket_ids,
           success_count: data.success_count,
-          partial_count: data.partial_count,
+          partial_fail_count: data.partial_count,
           fail_count: data.fail_count,
           effectiveness_rate: data.effectiveness_rate,
         } as any)
@@ -2366,12 +2467,91 @@ export const saveKnowledgeBase = createServerFn({ method: "POST" })
       source: data.source,
       linked_ticket_ids: data.linked_ticket_ids,
       success_count: data.success_count,
-      partial_count: data.partial_count,
+      partial_fail_count: data.partial_count,
       fail_count: data.fail_count,
       effectiveness_rate: data.effectiveness_rate,
       created_by: userId,
     } as any);
     if (error) throw new Error(`تعذر إنشاء مادة معرفية: ${error.message}`);
+    return { ok: true };
+  });
+
+export const updateKnowledgeLifecycleStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) => knowledgeLifecycleUpdateSchema.parse(input))
+  .handler(async ({ context, data }) => {
+    const { supabase, userId } = context;
+    await assertSupportOrManagerRole(supabase, userId);
+
+    const { data: article, error: articleError } = await supabase
+      .from("knowledge_base")
+      .select("id, lifecycle_state")
+      .eq("id", data.article_id)
+      .maybeSingle();
+    if (articleError) throw new Error(`تعذر تحميل المادة المعرفية: ${articleError.message}`);
+    if (!article) throw new Error("المادة غير موجودة");
+
+    const nowIso = new Date().toISOString();
+    let patch: Record<string, any> = {
+      review_notes: data.review_notes ?? null,
+      last_reviewed_at: nowIso,
+    };
+
+    if (data.action === "verify") {
+      patch = {
+        ...patch,
+        lifecycle_state: "verified",
+        verification_state: "verified",
+        review_state: "approved",
+        needs_human_review: false,
+        review_priority: 8,
+        archived_at: null,
+      };
+    } else if (data.action === "needs_review") {
+      patch = {
+        ...patch,
+        lifecycle_state: "needs_review",
+        verification_state: "needs_review",
+        review_state: "pending",
+        needs_human_review: true,
+        review_priority: 70,
+        archived_at: null,
+      };
+    } else if (data.action === "low_confidence") {
+      patch = {
+        ...patch,
+        lifecycle_state: "low_confidence",
+        verification_state: "needs_review",
+        review_state: "pending",
+        needs_human_review: true,
+        review_priority: 85,
+        archived_at: null,
+      };
+    } else if (data.action === "archive") {
+      patch = {
+        ...patch,
+        lifecycle_state: "archived",
+        verification_state: "needs_review",
+        review_state: "pending",
+        needs_human_review: false,
+        review_priority: 0,
+        archived_at: nowIso,
+      };
+    } else {
+      patch = {
+        ...patch,
+        lifecycle_state: "draft",
+        verification_state: "needs_review",
+        review_state: "pending",
+        needs_human_review: true,
+        review_priority: 30,
+        archived_at: null,
+      };
+    }
+
+    const { error: updateError } = await supabase.from("knowledge_base").update(patch as any).eq("id", data.article_id);
+    if (updateError) throw new Error(`تعذر تحديث حالة دورة الحياة: ${updateError.message}`);
+
     return { ok: true };
   });
 
@@ -2576,7 +2756,11 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       source.from("assignments").select("id, engineer_id, status, assignment_type, created_at, scheduled_date, submitted_at"),
       source.from("engineers").select("id, name"),
       source.from("products").select("id, model"),
-      source.from("knowledge_base").select("id, title, effectiveness_rate, success_count, fail_count"),
+      source
+        .from("knowledge_base")
+        .select(
+          "id, title, product_id, error_code_text, effectiveness_rate, success_count, fail_count, partial_fail_count, lifecycle_state, quality_score_v2, decline_score, needs_human_review, review_priority, usage_count_total, last_success_at, last_used_at, updated_at",
+        ),
       source
         .from("error_intelligence_alerts")
         .select("id, rule_type, severity, status, title, summary, trigger_count, related_ticket_id, related_assignment_id, related_knowledge_base_id, related_product_id, related_error_code_text, last_detected_at")
@@ -2596,7 +2780,7 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const assignments = assignmentsRes.data ?? [];
     const engineers = engineersRes.data ?? [];
     const products = productsRes.data ?? [];
-    const knowledge = kbRes.data ?? [];
+    const knowledge = (kbRes.data ?? []) as any[];
     const errorAlerts = alertsRes.data ?? [];
     const errorEvents = eventsRes.data ?? [];
 
@@ -2742,7 +2926,7 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         .map((article) => ({
           id: article.id,
           title: article.title,
-          usage_count: article.success_count + article.fail_count,
+          usage_count: article.usage_count_total ?? article.success_count + article.fail_count + (article.partial_fail_count ?? 0),
           effectiveness_rate: article.effectiveness_rate,
         }))
         .sort((a, b) => b.usage_count - a.usage_count)
@@ -2751,12 +2935,80 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         .map((article) => ({
           id: article.id,
           title: article.title,
-          usage_count: article.success_count + article.fail_count,
+          usage_count: article.usage_count_total ?? article.success_count + article.fail_count + (article.partial_fail_count ?? 0),
           effectiveness_rate: article.effectiveness_rate ?? 0,
         }))
         .sort((a, b) => (b.effectiveness_rate ?? 0) - (a.effectiveness_rate ?? 0))
         .slice(0, 6),
+      decliningArticles: [...knowledge]
+        .filter((article) => (article.decline_score ?? 0) >= 0.45 || article.lifecycle_state === "needs_review" || article.lifecycle_state === "low_confidence")
+        .map((article) => ({
+          id: article.id,
+          title: article.title,
+          lifecycle_state: article.lifecycle_state,
+          decline_score: article.decline_score ?? 0,
+          effectiveness_rate: article.effectiveness_rate ?? 0,
+          usage_count: article.usage_count_total ?? article.success_count + article.fail_count + (article.partial_fail_count ?? 0),
+          last_success_at: article.last_success_at,
+          updated_at: article.updated_at,
+        }))
+        .sort((a, b) => (b.decline_score ?? 0) - (a.decline_score ?? 0))
+        .slice(0, 8),
+      staleNeedingReview: [...knowledge]
+        .filter((article) => Boolean(article.needs_human_review) || article.lifecycle_state === "needs_review" || article.lifecycle_state === "low_confidence")
+        .map((article) => ({
+          id: article.id,
+          title: article.title,
+          lifecycle_state: article.lifecycle_state,
+          review_priority: article.review_priority ?? 0,
+          quality_score_v2: article.quality_score_v2 ?? 0,
+          updated_at: article.updated_at,
+          last_used_at: article.last_used_at,
+        }))
+        .sort((a, b) => (b.review_priority ?? 0) - (a.review_priority ?? 0))
+        .slice(0, 10),
     };
+
+    const unresolvedWithoutKnowledgeCoverage = recurringProblems
+      .map((problem) => {
+        const relatedTickets = tickets.filter(
+          (ticket) => ticket.error_code_text === problem.code && ticket.status !== "closed" && ticket.status !== "resolved_remote",
+        );
+        const hasGoodCoverage = knowledge.some(
+          (article) =>
+            (article.error_code_text ?? "") === problem.code &&
+            (article.lifecycle_state === "verified" || article.lifecycle_state === "needs_review") &&
+            (article.effectiveness_rate ?? 0) >= 55,
+        );
+        return {
+          error_code_text: problem.code,
+          unresolved_count: relatedTickets.length,
+          has_good_coverage: hasGoodCoverage,
+        };
+      })
+      .filter((row) => row.unresolved_count > 0 && !row.has_good_coverage)
+      .sort((a, b) => b.unresolved_count - a.unresolved_count)
+      .slice(0, 8);
+
+    const poorCoverageByProduct = products
+      .map((product) => {
+        const unresolvedTickets = tickets.filter(
+          (ticket) => ticket.affected_product_id === product.id && ticket.status !== "closed" && ticket.status !== "resolved_remote",
+        ).length;
+        const verifiedCoverage = knowledge.filter(
+          (article) => article.product_id === product.id && article.lifecycle_state === "verified" && (article.effectiveness_rate ?? 0) >= 60,
+        ).length;
+        return {
+          product_id: product.id,
+          model: product.model,
+          unresolved_count: unresolvedTickets,
+          verified_coverage_count: verifiedCoverage,
+          coverage_gap_score: unresolvedTickets - verifiedCoverage,
+        };
+      })
+      .filter((row) => row.unresolved_count > 0)
+      .sort((a, b) => b.coverage_gap_score - a.coverage_gap_score)
+      .slice(0, 8);
 
     const errorClassifications = new Map<string, number>();
     for (const event of errorEvents) {
@@ -2793,6 +3045,8 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       topProblematicModels,
       fieldSummary,
       knowledgeBaseUsage,
+      unresolvedWithoutKnowledgeCoverage,
+      poorCoverageByProduct,
       errorIntelligence: {
         totalAlerts: errorAlerts.length,
         openAlerts: errorAlerts.filter((item) => item.status === "open").length,
