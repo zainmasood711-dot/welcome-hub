@@ -488,7 +488,7 @@ async function assertCanAccessAssignment(supabase: SupabaseClient<Database>, use
   const roles = await getUserRoles(supabase, userId);
   const { data: assignment, error } = await supabase
     .from("assignments")
-    .select("id, engineer_id")
+    .select("id, engineer_id, ticket_id")
     .eq("id", assignmentId)
     .maybeSingle();
 
