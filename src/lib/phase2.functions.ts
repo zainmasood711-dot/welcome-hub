@@ -2061,25 +2061,26 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
   .inputValidator((input) => assignmentFieldReportWorkflowSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    const assignmentAccess = await assertCanAccessAssignment(supabase, userId, data.assignment_id);
+    try {
+      const assignmentAccess = await assertCanAccessAssignment(supabase, userId, data.assignment_id);
 
-    if (data.status === "completed" && !data.work_done?.trim()) {
-      throw new Error("عند إكمال المهمة يجب كتابة ما تم إنجازه");
-    }
+      if (data.status === "completed" && !data.work_done?.trim()) {
+        throw new Error("عند إكمال المهمة يجب كتابة ما تم إنجازه");
+      }
 
-    const { error: updateError } = await supabase
-      .from("assignments")
-      .update({
-        status: data.status,
-        work_done: data.work_done ?? null,
-        difficulties: data.difficulties ?? null,
-        recommendations: data.recommendations ?? null,
-        submitted_at: data.status === "completed" ? new Date().toISOString() : null,
-      })
-      .eq("id", data.assignment_id);
-    if (updateError) throw new Error(`تعذر تحديث حالة المهمة: ${updateError.message}`);
+      const { error: updateError } = await supabase
+        .from("assignments")
+        .update({
+          status: data.status,
+          work_done: data.work_done ?? null,
+          difficulties: data.difficulties ?? null,
+          recommendations: data.recommendations ?? null,
+          submitted_at: data.status === "completed" ? new Date().toISOString() : null,
+        })
+        .eq("id", data.assignment_id);
+      if (updateError) throw new Error(`تعذر تحديث حالة المهمة: ${updateError.message}`);
 
-    const attachmentRows = [
+      const attachmentRows = [
       ...data.photos.map((photo) => {
         const row = {
           attachable_type: "assignment" as const,
@@ -2110,57 +2111,79 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
         : []),
     ];
 
-    if (attachmentRows.length > 0) {
-      await assertStoragePathsExist(
-        supabase,
-        attachmentRows.map((item) => item.file_path),
-      );
+      if (attachmentRows.length > 0) {
+        await assertStoragePathsExist(
+          supabase,
+          attachmentRows.map((item) => item.file_path),
+        );
 
-      const { error: attachError } = await supabase.from("attachments").insert(attachmentRows);
-      if (attachError) throw new Error(`تعذر حفظ مرفقات التقرير: ${attachError.message}`);
-    }
-
-    if (assignmentAccess.ticket_id) {
-      const nextTicketStatus = mapAssignmentStatusToTicketStatus(data.status);
-
-      const { error: ticketUpdateError } = await supabase
-        .from("tickets")
-        .update({ status: nextTicketStatus, solution_type: "field" })
-        .eq("id", assignmentAccess.ticket_id);
-      if (ticketUpdateError) {
-        throw new Error(`تم تحديث المهمة لكن تعذر مزامنة حالة التذكرة: ${ticketUpdateError.message}`);
+        const { error: attachError } = await supabase.from("attachments").insert(attachmentRows);
+        if (attachError) throw new Error(`تعذر حفظ مرفقات التقرير: ${attachError.message}`);
       }
-    }
 
-    if (data.knowledge_base_id && data.knowledge_feedback_rating) {
-      const { data: profileRow, error: profileError } = await supabase
-        .from("profiles")
-        .select("engineer_id")
-        .eq("id", userId)
-        .maybeSingle();
-      if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
-      if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+      if (assignmentAccess.ticket_id) {
+        const nextTicketStatus = mapAssignmentStatusToTicketStatus(data.status);
 
-      const { data: assignmentRow, error: assignmentReadError } = await supabase
-        .from("assignments")
-        .select("ticket_id")
-        .eq("id", data.assignment_id)
-        .single();
-      if (assignmentReadError) throw new Error(`تعذر تحميل التذكرة المرتبطة للمهمة: ${assignmentReadError.message}`);
+        const { error: ticketUpdateError } = await supabase
+          .from("tickets")
+          .update({ status: nextTicketStatus, solution_type: "field" })
+          .eq("id", assignmentAccess.ticket_id);
+        if (ticketUpdateError) {
+          throw new Error(`تم تحديث المهمة لكن تعذر مزامنة حالة التذكرة: ${ticketUpdateError.message}`);
+        }
+      }
 
-      const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
-        knowledge_base_id: data.knowledge_base_id,
-        ticket_id: assignmentRow.ticket_id ?? null,
-        engineer_id: profileRow.engineer_id,
-        rating: data.knowledge_feedback_rating,
-        notes: data.knowledge_feedback_notes ?? null,
+      if (data.knowledge_base_id && data.knowledge_feedback_rating) {
+        const { data: profileRow, error: profileError } = await supabase
+          .from("profiles")
+          .select("engineer_id")
+          .eq("id", userId)
+          .maybeSingle();
+        if (profileError) throw new Error(`تعذر تحميل ملف المستخدم: ${profileError.message}`);
+        if (!profileRow?.engineer_id) throw new Error("الحساب الحالي غير مرتبط بمهندس");
+
+        const { data: assignmentRow, error: assignmentReadError } = await supabase
+          .from("assignments")
+          .select("ticket_id")
+          .eq("id", data.assignment_id)
+          .single();
+        if (assignmentReadError) throw new Error(`تعذر تحميل التذكرة المرتبطة للمهمة: ${assignmentReadError.message}`);
+
+        const { error: feedbackError } = await supabase.from("knowledge_feedback").insert({
+          knowledge_base_id: data.knowledge_base_id,
+          ticket_id: assignmentRow.ticket_id ?? null,
+          engineer_id: profileRow.engineer_id,
+          rating: data.knowledge_feedback_rating,
+          notes: data.knowledge_feedback_notes ?? null,
+        });
+        if (feedbackError) throw new Error(`تعذر حفظ تقييم المعرفة: ${feedbackError.message}`);
+
+        await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+      }
+
+      return { ok: true, attachments_count: attachmentRows.length };
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "field workflow failure";
+      const mapped = classifyRuntimeError(raw);
+      await insertErrorEvent(supabase, {
+        createdBy: userId,
+        classification: mapped.classification,
+        severity: mapped.severity,
+        source: /upload|storage|رفع|file/i.test(raw) ? "attachment_workflow" : /sync|offline|network|timeout/i.test(raw) ? "offline_sync" : "assignment_workflow",
+        message: raw,
+        details: {
+          assignment_id: data.assignment_id,
+          status: data.status,
+          photos_count: data.photos.length,
+          has_battery_log: !!data.battery_log_file,
+          has_knowledge_feedback: !!(data.knowledge_base_id && data.knowledge_feedback_rating),
+        },
+        actionHint: mapped.actionHint,
+        assignmentId: data.assignment_id,
+        knowledgeBaseId: data.knowledge_base_id ?? null,
       });
-      if (feedbackError) throw new Error(`تعذر حفظ تقييم المعرفة: ${feedbackError.message}`);
-
-      await recalculateKnowledgeMetrics(supabase, data.knowledge_base_id);
+      throw error;
     }
-
-    return { ok: true, attachments_count: attachmentRows.length };
   });
 
 export const listAttachments = createServerFn({ method: "GET" })
