@@ -58,7 +58,7 @@ function KnowledgeBasePage() {
 
   const [open, setOpen] = useState(false);
   const [createFromSourceOpen, setCreateFromSourceOpen] = useState(false);
-  const [form, setForm] = useState({ id: "", title: "", issue_description: "", solution_steps: "", product_id: "", error_code_text: "", search_keywords: "", source: "manual", success_count: 0, fail_count: 0, effectiveness_rate: 0 });
+  const [form, setForm] = useState({ id: "", title: "", issue_description: "", solution_steps: "", product_id: "", error_code_text: "", search_keywords: "", source: "manual", success_count: 0, partial_count: 0, fail_count: 0, effectiveness_rate: 0 });
   const [sourceForm, setSourceForm] = useState({ source_type: "ticket", source_id: "", title: "" });
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -76,13 +76,14 @@ function KnowledgeBasePage() {
           source: form.source as "manual" | "auto_from_ticket",
           linked_ticket_ids: [],
           success_count: Number(form.success_count) || 0,
+          partial_count: Number(form.partial_count) || 0,
           fail_count: Number(form.fail_count) || 0,
           effectiveness_rate: Number(form.effectiveness_rate) || 0,
         },
       });
       toast.success("تم حفظ مادة المعرفة");
       setOpen(false);
-      setForm({ id: "", title: "", issue_description: "", solution_steps: "", product_id: "", error_code_text: "", search_keywords: "", source: "manual", success_count: 0, fail_count: 0, effectiveness_rate: 0 });
+      setForm({ id: "", title: "", issue_description: "", solution_steps: "", product_id: "", error_code_text: "", search_keywords: "", source: "manual", success_count: 0, partial_count: 0, fail_count: 0, effectiveness_rate: 0 });
       queryClient.invalidateQueries({ queryKey: ["knowledge-base"] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "تعذر حفظ المادة");
@@ -152,7 +153,7 @@ function KnowledgeBasePage() {
                   <TableCell>{a.source === "manual" ? "يدوي" : "آلي"}</TableCell>
                   <TableCell>{a.effectiveness_rate}%</TableCell>
                   <TableCell>{a.success_count + a.fail_count}</TableCell>
-                  <TableCell className="text-left"><div className="flex gap-2"><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/knowledge-base/$articleId" params={{ articleId: a.id }}>تفاصيل</Link></Button>{canManage && <Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, title: a.title, issue_description: a.issue_description, solution_steps: a.solution_steps, product_id: a.product_id ?? "", error_code_text: a.error_code_text ?? "", search_keywords: a.search_keywords ?? "", source: a.source, success_count: a.success_count, fail_count: a.fail_count, effectiveness_rate: Number(a.effectiveness_rate) }); setOpen(true); }}>تعديل</Button>}</div></TableCell>
+                  <TableCell className="text-left"><div className="flex gap-2"><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/knowledge-base/$articleId" params={{ articleId: a.id }}>تفاصيل</Link></Button>{canManage && <Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, title: a.title, issue_description: a.issue_description, solution_steps: a.solution_steps, product_id: a.product_id ?? "", error_code_text: a.error_code_text ?? "", search_keywords: a.search_keywords ?? "", source: a.source, success_count: a.success_count, partial_count: 0, fail_count: a.fail_count, effectiveness_rate: Number(a.effectiveness_rate) }); setOpen(true); }}>تعديل</Button>}</div></TableCell>
                 </TableRow>
               ))}
               {!isLoading && articles.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة للبحث الحالي.</TableCell></TableRow>}
