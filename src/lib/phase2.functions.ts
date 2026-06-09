@@ -1513,7 +1513,7 @@ export const getAssignmentDetailsBundle = createServerFn({ method: "POST" })
       .single();
     if (assignmentError) throw new Error(`تعذر تحميل بيانات المهمة: ${assignmentError.message}`);
 
-    const [ticketRes, systemRes, engineerRes, attachmentsRes, kbRes] = await Promise.all([
+    const [ticketRes, systemRes, engineerRes, attachmentsRes] = await Promise.all([
       assignment.ticket_id
         ? supabase
             .from("tickets")
@@ -1535,14 +1535,21 @@ export const getAssignmentDetailsBundle = createServerFn({ method: "POST" })
         .eq("attachable_type", "assignment")
         .eq("attachable_id", assignment.id)
         .order("created_at", { ascending: false }),
-      supabase.from("knowledge_base").select("id, title, effectiveness_rate, solution_steps").order("effectiveness_rate", { ascending: false }).limit(20),
     ]);
 
     if (ticketRes.error) throw new Error(`تعذر تحميل التذكرة المرتبطة: ${ticketRes.error.message}`);
     if (systemRes.error) throw new Error(`تعذر تحميل بيانات النظام: ${systemRes.error.message}`);
     if (engineerRes.error) throw new Error(`تعذر تحميل بيانات المهندس: ${engineerRes.error.message}`);
     if (attachmentsRes.error) throw new Error(`تعذر تحميل مرفقات المهمة: ${attachmentsRes.error.message}`);
-    if (kbRes.error) throw new Error(`تعذر تحميل مواد المعرفة: ${kbRes.error.message}`);
+    const { data: kbRows, error: kbError } = await supabase.rpc("search_knowledge_ranked", {
+      p_issue_text: ticketRes.data?.description ?? assignment.work_done ?? assignment.recommendations ?? undefined,
+      p_affected_product_id: ticketRes.data?.affected_product_id ?? undefined,
+      p_error_code_text: ticketRes.data?.error_code_text ?? undefined,
+      p_customer_system_id: assignment.customer_system_id ?? ticketRes.data?.customer_system_id ?? undefined,
+      p_sort_by: "relevance",
+      p_limit: 20,
+    });
+    if (kbError) throw new Error(`تعذر تحميل مواد المعرفة: ${kbError.message}`);
 
     const resolvedSystem = systemRes.data ?? null;
     const customerId = resolvedSystem?.customer_id ?? ticketRes.data?.customer_id ?? null;
@@ -1613,7 +1620,7 @@ export const getAssignmentDetailsBundle = createServerFn({ method: "POST" })
         ticket_id: ticket.id,
         feedback: ticketToFeedback.get(ticket.id) ?? null,
       })),
-      knowledge_articles: kbRes.data ?? [],
+      knowledge_articles: kbRows ?? [],
       attachments: attachmentsRes.data ?? [],
     };
   });
