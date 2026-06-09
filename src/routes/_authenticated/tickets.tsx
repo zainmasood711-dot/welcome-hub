@@ -585,6 +585,66 @@ function TicketsPage() {
             </Card>
 
             <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">ذكاء الأخطاء - توصيات الحل</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                {(resolutionRecommendations?.related_tickets?.length ?? 0) === 0 && (resolutionRecommendations?.recent_successful_resolutions?.length ?? 0) === 0 ? (
+                  <p className="text-sm text-muted-foreground">ستظهر توصيات التشغيل تلقائيًا عند توفر سياق نظام/موديل/كود عطل كافٍ.</p>
+                ) : (
+                  <>
+                    {(resolutionRecommendations?.related_tickets?.length ?? 0) > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">حالات مشابهة مرتبطة</p>
+                        {(resolutionRecommendations?.related_tickets ?? []).slice(0, 3).map((item) => (
+                          <div key={item.id} className="rounded border p-2 text-xs">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">#{item.id.slice(0, 8)}</Badge>
+                              <Badge>{item.status}</Badge>
+                              {item.solution_type && <Badge variant="secondary">{item.solution_type}</Badge>}
+                              {item.error_code_text && <Badge variant="outline">{item.error_code_text}</Badge>}
+                            </div>
+                            <p className="line-clamp-2 text-muted-foreground">{item.summary || "بدون وصف"}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(resolutionRecommendations?.recent_successful_resolutions?.length ?? 0) > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">حلول ناجحة حديثة</p>
+                        {(resolutionRecommendations?.recent_successful_resolutions ?? []).slice(0, 3).map((item) => (
+                          <div key={item.ticket_id} className="rounded border p-2 text-xs">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">تذكرة #{item.ticket_id.slice(0, 8)}</Badge>
+                              {item.solution_type && <Badge variant="secondary">{item.solution_type}</Badge>}
+                              {item.resolved_at && <Badge>{new Date(item.resolved_at).toLocaleDateString("ar-EG")}</Badge>}
+                            </div>
+                            <p className="line-clamp-2 text-muted-foreground">{item.remote_solution_notes || "لا توجد ملاحظات حل مسجلة"}</p>
+                            {item.remote_solution_notes && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="mt-2"
+                                onClick={() =>
+                                  setForm((prev) => ({
+                                    ...prev,
+                                    remote_solution_notes: prev.remote_solution_notes || item.remote_solution_notes || "",
+                                  }))
+                                }
+                              >
+                                استخدام هذه الملاحظات
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm">المعالجة عن بُعد</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
