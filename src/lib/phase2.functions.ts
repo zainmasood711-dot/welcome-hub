@@ -1417,7 +1417,7 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
 
     const topLinkedTicket = (ticketsRes.data ?? [])[0];
     const { data: relatedRows, error: relatedError } = await supabase.rpc("search_knowledge_ranked", {
-      p_issue_text: article.issue_description,
+      p_issue_text: article.issue_description ?? undefined,
       p_affected_product_id: article.product_id ?? topLinkedTicket?.affected_product_id ?? undefined,
       p_error_code_text: article.error_code_text ?? topLinkedTicket?.error_code_text ?? undefined,
       p_customer_system_id: topLinkedTicket?.customer_system_id ?? undefined,
@@ -1857,22 +1857,30 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
   .inputValidator((input) => knowledgeListFiltersSchema.parse(input ?? {}))
   .handler(async ({ context, data }) => {
     const { supabase } = context;
-    let query = supabase.from("knowledge_base").select("*").limit(data.limit);
+    if (data.sort_by === "relevance" || !!data.search) {
+      const { data: rankedRows, error: rankedError } = await supabase.rpc("search_knowledge_ranked", {
+        p_issue_text: data.search ?? undefined,
+        p_affected_product_id: data.product_id ?? undefined,
+        p_source: data.source ?? undefined,
+        p_min_effectiveness: data.min_effectiveness ?? undefined,
+        p_sort_by: data.sort_by,
+        p_limit: data.limit,
+      });
+      if (rankedError) throw new Error(`تعذر تحميل قاعدة المعرفة: ${rankedError.message}`);
+      return rankedRows ?? [];
+    }
+
+    let query = supabase.from("knowledge_base").select(knowledgeBaseSelectColumns).limit(data.limit);
 
     if (data.product_id) query = query.eq("product_id", data.product_id);
     if (data.source) query = query.eq("source", data.source);
     if (data.min_effectiveness != null) query = query.gte("effectiveness_rate", data.min_effectiveness);
-    if (data.search) {
-      const normalized = data.search.trim();
-      query = query.or(
-        `title.ilike.%${normalized}%,issue_description.ilike.%${normalized}%,solution_steps.ilike.%${normalized}%,error_code_text.ilike.%${normalized}%,search_keywords.ilike.%${normalized}%`,
-      );
-    }
-
     if (data.sort_by === "effectiveness") {
       query = query.order("effectiveness_rate", { ascending: false }).order("created_at", { ascending: false });
     } else if (data.sort_by === "usage") {
       query = query.order("success_count", { ascending: false }).order("created_at", { ascending: false });
+    } else if (data.sort_by === "freshness") {
+      query = query.order("freshness_score", { ascending: false }).order("updated_at", { ascending: false });
     } else {
       query = query.order("created_at", { ascending: false });
     }
