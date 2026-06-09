@@ -637,6 +637,131 @@ async function assertCanAccessAssignment(supabase: SupabaseClient<Database>, use
   return assignment;
 }
 
+async function insertErrorEvent(
+  supabase: SupabaseClient<Database>,
+  params: {
+    createdBy: string;
+    classification: ErrorIntelligenceClassification;
+    severity: ErrorIntelligenceSeverity;
+    source: ErrorIntelligenceSource;
+    message: string;
+    details?: Record<string, unknown> | null;
+    actionHint?: string | null;
+    sourceRefId?: string | null;
+    customerId?: string | null;
+    customerSystemId?: string | null;
+    ticketId?: string | null;
+    assignmentId?: string | null;
+    attachmentId?: string | null;
+    knowledgeBaseId?: string | null;
+    productId?: string | null;
+    errorCodeId?: string | null;
+    errorCodeText?: string | null;
+  },
+) {
+  const normalizedErrorSignature = normalizeErrorSignature({
+    classification: params.classification,
+    message: params.message,
+    errorCodeText: params.errorCodeText,
+  });
+
+  const { data, error } = await supabase
+    .from("error_intelligence_events")
+    .insert({
+      classification: params.classification,
+      severity: params.severity,
+      source: params.source,
+      message: params.message,
+      normalized_error_signature: normalizedErrorSignature,
+      details: (params.details ?? {}) as any,
+      action_hint: params.actionHint ?? null,
+      source_ref_id: params.sourceRefId ?? null,
+      customer_id: params.customerId ?? null,
+      customer_system_id: params.customerSystemId ?? null,
+      ticket_id: params.ticketId ?? null,
+      assignment_id: params.assignmentId ?? null,
+      attachment_id: params.attachmentId ?? null,
+      knowledge_base_id: params.knowledgeBaseId ?? null,
+      product_id: params.productId ?? null,
+      error_code_id: params.errorCodeId ?? null,
+      error_code_text: params.errorCodeText ?? null,
+      created_by: params.createdBy,
+    } as any)
+    .select("id, classification, severity, source, message, normalized_error_signature, occurred_at")
+    .single();
+
+  if (error) {
+    throw new Error(`تعذر تسجيل حدث الخطأ الذكي: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function recommendResolutionSources(
+  supabase: SupabaseClient<Database>,
+  params: {
+    customerSystemId?: string | null;
+    productId?: string | null;
+    errorCodeText?: string | null;
+    issueText?: string | null;
+    ticketId?: string | null;
+    assignmentId?: string | null;
+    limit: number;
+  },
+) {
+  const normalizedCode = normalizeText(params.errorCodeText);
+
+  const { data: knowledgeRows, error: knowledgeError } = await supabase.rpc("search_knowledge_ranked", {
+    p_issue_text: params.issueText ?? undefined,
+    p_affected_product_id: params.productId ?? undefined,
+    p_error_code_text: normalizedCode || undefined,
+    p_customer_system_id: params.customerSystemId ?? undefined,
+    p_sort_by: "relevance",
+    p_limit: params.limit,
+  });
+  if (knowledgeError) throw new Error(`تعذر جلب توصيات المعرفة: ${knowledgeError.message}`);
+
+  let ticketQuery = supabase
+    .from("tickets")
+    .select("id, description, status, solution_type, remote_solution_notes, error_code_text, affected_product_id, customer_system_id, created_at, resolved_at, knowledge_base_id")
+    .order("created_at", { ascending: false })
+    .limit(Math.max(params.limit * 2, 10));
+
+  if (params.customerSystemId) ticketQuery = ticketQuery.eq("customer_system_id", params.customerSystemId);
+  if (params.productId) ticketQuery = ticketQuery.eq("affected_product_id", params.productId);
+  if (normalizedCode) ticketQuery = ticketQuery.ilike("error_code_text", normalizedCode);
+  const { data: ticketRows, error: ticketError } = await ticketQuery;
+  if (ticketError) throw new Error(`تعذر جلب التذاكر المشابهة: ${ticketError.message}`);
+
+  const relatedTickets = (ticketRows ?? []).slice(0, params.limit).map((ticket) => ({
+    id: ticket.id,
+    status: ticket.status,
+    solution_type: ticket.solution_type,
+    error_code_text: ticket.error_code_text,
+    summary: (ticket.description ?? "").slice(0, 180),
+    resolved_at: ticket.resolved_at,
+    created_at: ticket.created_at,
+    knowledge_base_id: ticket.knowledge_base_id,
+  }));
+
+  const successfulRecent = (ticketRows ?? [])
+    .filter((ticket) => (ticket.status === "closed" || ticket.status === "resolved_remote") && !!ticket.resolved_at)
+    .slice(0, params.limit)
+    .map((ticket) => ({
+      ticket_id: ticket.id,
+      solution_type: ticket.solution_type,
+      remote_solution_notes: ticket.remote_solution_notes,
+      resolved_at: ticket.resolved_at,
+      knowledge_base_id: ticket.knowledge_base_id,
+    }));
+
+  return {
+    knowledge: knowledgeRows ?? [],
+    related_tickets: relatedTickets,
+    recent_successful_resolutions: successfulRecent,
+  };
+}
+
 async function generateKnowledgeKeywords(
   supabase: SupabaseClient<Database>,
   params: {
