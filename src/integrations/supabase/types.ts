@@ -442,6 +442,275 @@ export type Database = {
           },
         ]
       }
+      error_intelligence_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          created_at: string
+          created_by: string | null
+          dedupe_key: string
+          first_detected_at: string
+          id: string
+          last_detected_at: string
+          recommendation_context: Json
+          related_assignment_id: string | null
+          related_customer_id: string | null
+          related_customer_system_id: string | null
+          related_error_code_text: string | null
+          related_event_id: string | null
+          related_knowledge_base_id: string | null
+          related_product_id: string | null
+          related_ticket_id: string | null
+          resolved_at: string | null
+          rule_type: Database["public"]["Enums"]["error_intelligence_alert_rule"]
+          severity: Database["public"]["Enums"]["error_intelligence_severity"]
+          status: Database["public"]["Enums"]["error_intelligence_status"]
+          summary: string
+          title: string
+          trigger_count: number
+          updated_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          dedupe_key: string
+          first_detected_at?: string
+          id?: string
+          last_detected_at?: string
+          recommendation_context?: Json
+          related_assignment_id?: string | null
+          related_customer_id?: string | null
+          related_customer_system_id?: string | null
+          related_error_code_text?: string | null
+          related_event_id?: string | null
+          related_knowledge_base_id?: string | null
+          related_product_id?: string | null
+          related_ticket_id?: string | null
+          resolved_at?: string | null
+          rule_type: Database["public"]["Enums"]["error_intelligence_alert_rule"]
+          severity?: Database["public"]["Enums"]["error_intelligence_severity"]
+          status?: Database["public"]["Enums"]["error_intelligence_status"]
+          summary: string
+          title: string
+          trigger_count?: number
+          updated_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          dedupe_key?: string
+          first_detected_at?: string
+          id?: string
+          last_detected_at?: string
+          recommendation_context?: Json
+          related_assignment_id?: string | null
+          related_customer_id?: string | null
+          related_customer_system_id?: string | null
+          related_error_code_text?: string | null
+          related_event_id?: string | null
+          related_knowledge_base_id?: string | null
+          related_product_id?: string | null
+          related_ticket_id?: string | null
+          resolved_at?: string | null
+          rule_type?: Database["public"]["Enums"]["error_intelligence_alert_rule"]
+          severity?: Database["public"]["Enums"]["error_intelligence_severity"]
+          status?: Database["public"]["Enums"]["error_intelligence_status"]
+          summary?: string
+          title?: string
+          trigger_count?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_intelligence_alerts_related_assignment_id_fkey"
+            columns: ["related_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_alerts_related_customer_id_fkey"
+            columns: ["related_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_alerts_related_customer_system_id_fkey"
+            columns: ["related_customer_system_id"]
+            isOneToOne: false
+            referencedRelation: "customer_systems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_alerts_related_event_id_fkey"
+            columns: ["related_event_id"]
+            isOneToOne: false
+            referencedRelation: "error_intelligence_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_alerts_related_knowledge_base_id_fkey"
+            columns: ["related_knowledge_base_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_alerts_related_product_id_fkey"
+            columns: ["related_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_alerts_related_ticket_id_fkey"
+            columns: ["related_ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      error_intelligence_events: {
+        Row: {
+          action_hint: string | null
+          assignment_id: string | null
+          attachment_id: string | null
+          classification: Database["public"]["Enums"]["error_intelligence_classification"]
+          created_at: string
+          created_by: string
+          customer_id: string | null
+          customer_system_id: string | null
+          details: Json
+          error_code_id: string | null
+          error_code_text: string | null
+          id: string
+          knowledge_base_id: string | null
+          message: string
+          normalized_error_signature: string
+          occurred_at: string
+          product_id: string | null
+          resolved_at: string | null
+          severity: Database["public"]["Enums"]["error_intelligence_severity"]
+          source: Database["public"]["Enums"]["error_intelligence_source"]
+          source_ref_id: string | null
+          status: Database["public"]["Enums"]["error_intelligence_status"]
+          ticket_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          action_hint?: string | null
+          assignment_id?: string | null
+          attachment_id?: string | null
+          classification: Database["public"]["Enums"]["error_intelligence_classification"]
+          created_at?: string
+          created_by: string
+          customer_id?: string | null
+          customer_system_id?: string | null
+          details?: Json
+          error_code_id?: string | null
+          error_code_text?: string | null
+          id?: string
+          knowledge_base_id?: string | null
+          message: string
+          normalized_error_signature: string
+          occurred_at?: string
+          product_id?: string | null
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["error_intelligence_severity"]
+          source: Database["public"]["Enums"]["error_intelligence_source"]
+          source_ref_id?: string | null
+          status?: Database["public"]["Enums"]["error_intelligence_status"]
+          ticket_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          action_hint?: string | null
+          assignment_id?: string | null
+          attachment_id?: string | null
+          classification?: Database["public"]["Enums"]["error_intelligence_classification"]
+          created_at?: string
+          created_by?: string
+          customer_id?: string | null
+          customer_system_id?: string | null
+          details?: Json
+          error_code_id?: string | null
+          error_code_text?: string | null
+          id?: string
+          knowledge_base_id?: string | null
+          message?: string
+          normalized_error_signature?: string
+          occurred_at?: string
+          product_id?: string | null
+          resolved_at?: string | null
+          severity?: Database["public"]["Enums"]["error_intelligence_severity"]
+          source?: Database["public"]["Enums"]["error_intelligence_source"]
+          source_ref_id?: string | null
+          status?: Database["public"]["Enums"]["error_intelligence_status"]
+          ticket_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "error_intelligence_events_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_attachment_id_fkey"
+            columns: ["attachment_id"]
+            isOneToOne: false
+            referencedRelation: "attachments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_customer_system_id_fkey"
+            columns: ["customer_system_id"]
+            isOneToOne: false
+            referencedRelation: "customer_systems"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_error_code_id_fkey"
+            columns: ["error_code_id"]
+            isOneToOne: false
+            referencedRelation: "error_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_knowledge_base_id_fkey"
+            columns: ["knowledge_base_id"]
+            isOneToOne: false
+            referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "error_intelligence_events_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knowledge_base: {
         Row: {
           classification_metadata: Json
@@ -1117,12 +1386,24 @@ export type Database = {
     }
     Functions: {
       current_engineer_id: { Args: { _user_id: string }; Returns: string }
+      evaluate_error_intelligence_alerts: {
+        Args: { p_event_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      normalize_error_signature: {
+        Args: {
+          p_classification: Database["public"]["Enums"]["error_intelligence_classification"]
+          p_error_code?: string
+          p_message: string
+        }
+        Returns: string
       }
       search_knowledge_ranked: {
         Args: {
@@ -1165,6 +1446,26 @@ export type Database = {
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
+      upsert_error_intelligence_alert: {
+        Args: {
+          p_created_by: string
+          p_dedupe_key: string
+          p_recommendation_context: Json
+          p_related_assignment_id: string
+          p_related_customer_id: string
+          p_related_customer_system_id: string
+          p_related_error_code_text: string
+          p_related_event_id: string
+          p_related_knowledge_base_id: string
+          p_related_product_id: string
+          p_related_ticket_id: string
+          p_rule_type: Database["public"]["Enums"]["error_intelligence_alert_rule"]
+          p_severity: Database["public"]["Enums"]["error_intelligence_severity"]
+          p_summary: string
+          p_title: string
+        }
+        Returns: undefined
+      }
       user_primary_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -1172,6 +1473,36 @@ export type Database = {
     }
     Enums: {
       app_role: "support_engineer" | "field_engineer" | "manager"
+      error_intelligence_alert_rule:
+        | "repeated_same_issue_customer_system"
+        | "repeated_error_code_same_model"
+        | "growing_failure_frequency"
+        | "knowledge_failure_spike"
+        | "attachment_upload_spike"
+        | "unresolved_ticket_aging_symptoms"
+      error_intelligence_classification:
+        | "application_error"
+        | "validation_error"
+        | "workflow_error"
+        | "sync_error"
+        | "upload_error"
+        | "data_consistency_issue"
+        | "repeated_operational_issue"
+        | "low_effectiveness_knowledge_issue"
+      error_intelligence_severity: "low" | "medium" | "high" | "critical"
+      error_intelligence_source:
+        | "runtime"
+        | "ticket_workflow"
+        | "assignment_workflow"
+        | "attachment_workflow"
+        | "offline_sync"
+        | "knowledge_workflow"
+        | "reporting"
+      error_intelligence_status:
+        | "open"
+        | "acknowledged"
+        | "resolved"
+        | "ignored"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1300,6 +1631,40 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["support_engineer", "field_engineer", "manager"],
+      error_intelligence_alert_rule: [
+        "repeated_same_issue_customer_system",
+        "repeated_error_code_same_model",
+        "growing_failure_frequency",
+        "knowledge_failure_spike",
+        "attachment_upload_spike",
+        "unresolved_ticket_aging_symptoms",
+      ],
+      error_intelligence_classification: [
+        "application_error",
+        "validation_error",
+        "workflow_error",
+        "sync_error",
+        "upload_error",
+        "data_consistency_issue",
+        "repeated_operational_issue",
+        "low_effectiveness_knowledge_issue",
+      ],
+      error_intelligence_severity: ["low", "medium", "high", "critical"],
+      error_intelligence_source: [
+        "runtime",
+        "ticket_workflow",
+        "assignment_workflow",
+        "attachment_workflow",
+        "offline_sync",
+        "knowledge_workflow",
+        "reporting",
+      ],
+      error_intelligence_status: [
+        "open",
+        "acknowledged",
+        "resolved",
+        "ignored",
+      ],
     },
   },
 } as const
