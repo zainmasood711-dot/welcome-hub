@@ -18,6 +18,24 @@ import { requireRole } from "@/lib/auth-client";
 import { createKnowledgeArticleFromContext, getPhase2References, listKnowledgeBase, saveKnowledgeBase } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
+type KnowledgeListItem = {
+  id: string;
+  title: string;
+  issue_description: string | null;
+  solution_steps: string | null;
+  product_id: string | null;
+  error_code_text: string | null;
+  search_keywords: string | null;
+  source: string;
+  success_count: number;
+  partial_fail_count?: number;
+  fail_count: number;
+  effectiveness_rate: number | null;
+  updated_at: string;
+  freshness_score?: number | null;
+  match_reason?: string;
+};
+
 export const Route = createFileRoute("/_authenticated/knowledge-base")({
   beforeLoad: async () => {
     await requireRole(["support_engineer", "field_engineer"]);
@@ -41,7 +59,7 @@ function KnowledgeBasePage() {
   const [filterEffectiveness, setFilterEffectiveness] = useState("all");
   const [sortBy, setSortBy] = useState<"newest" | "effectiveness" | "usage">("newest");
   const { data: refs } = useQuery({ queryKey: ["phase2-refs"], queryFn: () => refsFn() });
-  const { data: articles = [], isLoading } = useQuery({
+  const { data: articles = [], isLoading } = useQuery<KnowledgeListItem[]>({
     queryKey: ["knowledge-base", searchText, filterProductId, filterSource, filterEffectiveness, sortBy],
     queryFn: () =>
       listFn({
@@ -151,9 +169,9 @@ function KnowledgeBasePage() {
                   <TableCell>{refs?.products.find((p) => p.id === a.product_id)?.model ?? "—"}</TableCell>
                   <TableCell>{a.error_code_text ?? "—"}</TableCell>
                    <TableCell>{a.source === "manual" ? "يدوي" : a.source === "auto_from_assignment" ? "آلي من مهمة" : "آلي من تذكرة"}</TableCell>
-                  <TableCell>{a.effectiveness_rate}%</TableCell>
-                  <TableCell>{a.success_count + a.fail_count}</TableCell>
-                  <TableCell className="text-left"><div className="flex gap-2"><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/knowledge-base/$articleId" params={{ articleId: a.id }}>تفاصيل</Link></Button>{canManage && <Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, title: a.title, issue_description: a.issue_description ?? "", solution_steps: a.solution_steps ?? "", product_id: a.product_id ?? "", error_code_text: a.error_code_text ?? "", search_keywords: a.search_keywords ?? "", source: a.source, success_count: a.success_count, partial_count: 0, fail_count: a.fail_count, effectiveness_rate: Number(a.effectiveness_rate ?? 0) }); setOpen(true); }}>تعديل</Button>}</div></TableCell>
+                   <TableCell>{a.effectiveness_rate ?? 0}%</TableCell>
+                   <TableCell>{a.success_count + (a.partial_fail_count ?? 0) + a.fail_count}</TableCell>
+                   <TableCell className="text-left"><div className="flex gap-2"><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/knowledge-base/$articleId" params={{ articleId: a.id }}>تفاصيل</Link></Button>{canManage && <Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, title: a.title, issue_description: a.issue_description ?? "", solution_steps: a.solution_steps ?? "", product_id: a.product_id ?? "", error_code_text: a.error_code_text ?? "", search_keywords: a.search_keywords ?? "", source: a.source as "manual" | "auto_from_ticket" | "auto_from_assignment", success_count: a.success_count, partial_count: a.partial_fail_count ?? 0, fail_count: a.fail_count, effectiveness_rate: Number(a.effectiveness_rate ?? 0) }); setOpen(true); }}>تعديل</Button>}</div></TableCell>
                 </TableRow>
               ))}
               {!isLoading && articles.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة للبحث الحالي.</TableCell></TableRow>}
