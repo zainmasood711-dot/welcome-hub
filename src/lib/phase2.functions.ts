@@ -601,7 +601,6 @@ async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, k
       success_count: successCount,
       fail_count: failCount,
       partial_fail_count: partialCount,
-      effectiveness_rate: effectivenessRate,
       usage_count_total: usageCountTotal,
       last_used_at: usageCountTotal > 0 ? nowIso : null,
       last_success_at: successCount > 0 ? nowIso : null,
