@@ -546,7 +546,7 @@ function FieldTaskPage() {
             {(recommendations?.recent_successful_resolutions?.length ?? 0) > 0 && (
               <div className="rounded border p-2 text-xs space-y-1">
                 <p className="font-medium text-muted-foreground">حلول ناجحة حديثة مشابهة</p>
-                {recommendations.recent_successful_resolutions.slice(0, 2).map((item: any) => (
+                {(recommendations?.recent_successful_resolutions ?? []).slice(0, 2).map((item: any) => (
                   <div key={item.ticket_id} className="rounded border p-2">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
                       <Badge variant="outline">#{item.ticket_id.slice(0, 8)}</Badge>
