@@ -48,7 +48,7 @@ function KnowledgeBasePage() {
         data: {
           search: searchText || null,
           product_id: filterProductId === "all" ? null : filterProductId,
-          source: filterSource === "all" ? null : (filterSource as "manual" | "auto_from_ticket"),
+          source: filterSource === "all" ? null : (filterSource as "manual" | "auto_from_ticket" | "auto_from_assignment"),
           min_effectiveness: filterEffectiveness === "all" ? null : Number(filterEffectiveness),
           sort_by: sortBy,
           limit: 200,
@@ -134,7 +134,7 @@ function KnowledgeBasePage() {
           <CardContent className="grid grid-cols-1 gap-2 md:grid-cols-5">
             <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="بحث بالنص أو الكود أو الموديل" />
             <Select value={filterProductId} onValueChange={setFilterProductId}><SelectTrigger><SelectValue placeholder="المنتج" /></SelectTrigger><SelectContent><SelectItem value="all">كل المنتجات</SelectItem>{(refs?.products ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.model}</SelectItem>)}</SelectContent></Select>
-            <Select value={filterSource} onValueChange={setFilterSource}><SelectTrigger><SelectValue placeholder="المصدر" /></SelectTrigger><SelectContent><SelectItem value="all">كل المصادر</SelectItem><SelectItem value="manual">يدوي</SelectItem><SelectItem value="auto_from_ticket">آلي</SelectItem></SelectContent></Select>
+            <Select value={filterSource} onValueChange={setFilterSource}><SelectTrigger><SelectValue placeholder="المصدر" /></SelectTrigger><SelectContent><SelectItem value="all">كل المصادر</SelectItem><SelectItem value="manual">يدوي</SelectItem><SelectItem value="auto_from_ticket">آلي من تذكرة</SelectItem><SelectItem value="auto_from_assignment">آلي من مهمة</SelectItem></SelectContent></Select>
             <Select value={filterEffectiveness} onValueChange={setFilterEffectiveness}><SelectTrigger><SelectValue placeholder="الفاعلية" /></SelectTrigger><SelectContent><SelectItem value="all">كل النسب</SelectItem><SelectItem value="80">80% فأكثر</SelectItem><SelectItem value="60">60% فأكثر</SelectItem><SelectItem value="40">40% فأكثر</SelectItem></SelectContent></Select>
             <Select value={sortBy} onValueChange={(value) => setSortBy(value as "newest" | "effectiveness" | "usage")}><SelectTrigger><SelectValue placeholder="الترتيب" /></SelectTrigger><SelectContent><SelectItem value="newest">الأحدث</SelectItem><SelectItem value="effectiveness">الأعلى فاعلية</SelectItem><SelectItem value="usage">الأكثر استخدامًا</SelectItem></SelectContent></Select>
           </CardContent>
@@ -150,7 +150,7 @@ function KnowledgeBasePage() {
                   <TableCell className="font-medium">{a.title}</TableCell>
                   <TableCell>{refs?.products.find((p) => p.id === a.product_id)?.model ?? "—"}</TableCell>
                   <TableCell>{a.error_code_text ?? "—"}</TableCell>
-                  <TableCell>{a.source === "manual" ? "يدوي" : "آلي"}</TableCell>
+                   <TableCell>{a.source === "manual" ? "يدوي" : a.source === "auto_from_assignment" ? "آلي من مهمة" : "آلي من تذكرة"}</TableCell>
                   <TableCell>{a.effectiveness_rate}%</TableCell>
                   <TableCell>{a.success_count + a.fail_count}</TableCell>
                   <TableCell className="text-left"><div className="flex gap-2"><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/knowledge-base/$articleId" params={{ articleId: a.id }}>تفاصيل</Link></Button>{canManage && <Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, title: a.title, issue_description: a.issue_description ?? "", solution_steps: a.solution_steps ?? "", product_id: a.product_id ?? "", error_code_text: a.error_code_text ?? "", search_keywords: a.search_keywords ?? "", source: a.source, success_count: a.success_count, partial_count: 0, fail_count: a.fail_count, effectiveness_rate: Number(a.effectiveness_rate ?? 0) }); setOpen(true); }}>تعديل</Button>}</div></TableCell>
@@ -172,7 +172,7 @@ function KnowledgeBasePage() {
             <div className="space-y-2"><Label>المنتج</Label><Select value={form.product_id || "none"} onValueChange={(v) => setForm((p) => ({ ...p, product_id: v === "none" ? "" : v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">غير محدد</SelectItem>{(refs?.products ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.model}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-2"><Label>رمز الخطأ</Label><Input value={form.error_code_text} onChange={(e) => setForm((p) => ({ ...p, error_code_text: e.target.value }))} /></div>
             <div className="space-y-2"><Label>كلمات البحث</Label><Input value={form.search_keywords} onChange={(e) => setForm((p) => ({ ...p, search_keywords: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>المصدر</Label><Select value={form.source} onValueChange={(v) => setForm((p) => ({ ...p, source: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manual">يدوي</SelectItem><SelectItem value="auto_from_ticket">آلي من تذكرة</SelectItem></SelectContent></Select></div>
+             <div className="space-y-2"><Label>المصدر</Label><Select value={form.source} onValueChange={(v) => setForm((p) => ({ ...p, source: v }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="manual">يدوي</SelectItem><SelectItem value="auto_from_ticket">آلي من تذكرة</SelectItem><SelectItem value="auto_from_assignment">آلي من مهمة</SelectItem></SelectContent></Select></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-2"><Label>نجاحات</Label><Input type="number" min={0} value={String(form.success_count)} onChange={(e) => setForm((p) => ({ ...p, success_count: Number(e.target.value) || 0 }))} /></div>
               <div className="space-y-2"><Label>إخفاقات</Label><Input type="number" min={0} value={String(form.fail_count)} onChange={(e) => setForm((p) => ({ ...p, fail_count: Number(e.target.value) || 0 }))} /></div>
