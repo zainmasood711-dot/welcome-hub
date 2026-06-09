@@ -453,7 +453,7 @@ async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, k
       fail_count: failCount,
       partial_count: partialCount,
       effectiveness_rate: effectivenessRate,
-    })
+    } as any)
     .eq("id", knowledgeBaseId);
   if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
 
@@ -1053,6 +1053,11 @@ export const createTicketWorkflow = createServerFn({ method: "POST" })
     if (ticketError) throw new Error(`تعذر إنشاء التذكرة: ${ticketError.message}`);
 
     if (data.attachment_files.length > 0) {
+      await assertStoragePathsExist(
+        supabase,
+        data.attachment_files.map((file) => file.file_path),
+      );
+
       const attachmentRows = data.attachment_files.map((file) => {
         const row = {
           attachable_type: "ticket" as const,
@@ -1733,7 +1738,7 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
   .inputValidator((input) => assignmentFieldReportWorkflowSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase, userId } = context;
-    await assertCanAccessAssignment(supabase, userId, data.assignment_id);
+    const assignmentAccess = await assertCanAccessAssignment(supabase, userId, data.assignment_id);
 
     if (data.status === "completed" && !data.work_done?.trim()) {
       throw new Error("عند إكمال المهمة يجب كتابة ما تم إنجازه");
@@ -1783,8 +1788,32 @@ export const submitAssignmentFieldReportWorkflow = createServerFn({ method: "POS
     ];
 
     if (attachmentRows.length > 0) {
+      await assertStoragePathsExist(
+        supabase,
+        attachmentRows.map((item) => item.file_path),
+      );
+
       const { error: attachError } = await supabase.from("attachments").insert(attachmentRows);
       if (attachError) throw new Error(`تعذر حفظ مرفقات التقرير: ${attachError.message}`);
+    }
+
+    if (assignmentAccess.ticket_id) {
+      const nextTicketStatus =
+        data.status === "completed"
+          ? "closed"
+          : data.status === "in_progress"
+            ? "in_progress"
+            : data.status === "pending"
+              ? "assigned_field"
+              : "in_progress";
+
+      const { error: ticketUpdateError } = await supabase
+        .from("tickets")
+        .update({ status: nextTicketStatus, solution_type: "field" })
+        .eq("id", assignmentAccess.ticket_id);
+      if (ticketUpdateError) {
+        throw new Error(`تم تحديث المهمة لكن تعذر مزامنة حالة التذكرة: ${ticketUpdateError.message}`);
+      }
     }
 
     if (data.knowledge_base_id && data.knowledge_feedback_rating) {
