@@ -2377,7 +2377,7 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
           .in("id", rankedIds);
         if (lifecycleError) throw new Error(`تعذر تحميل حالة دورة الحياة: ${lifecycleError.message}`);
         const lifecycleMap = new Map((lifecycleRows ?? []).map((row: any) => [row.id, row]));
-        ranked = ranked.map((item) => ({
+        ranked = ranked.map((item: any) => ({
           ...(item as Record<string, unknown>),
           ...((lifecycleMap.get(item.id) ?? {}) as Record<string, unknown>),
         }));
