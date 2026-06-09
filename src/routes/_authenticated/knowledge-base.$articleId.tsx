@@ -17,6 +17,25 @@ import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
 import { getKnowledgeArticleDetails, getPhase2References, saveKnowledgeFeedbackFromContext } from "@/lib/phase2.functions";
 
+type KnowledgeArticleDetailsPayload = {
+  article: {
+    id: string;
+    title: string;
+    issue_description: string | null;
+    solution_steps: string | null;
+    product_id: string | null;
+    error_code_text: string | null;
+    search_keywords: string | null;
+    source: string;
+    updated_at: string;
+  };
+  linked_tickets: Array<{ id: string; status: string; priority: string; description: string }>;
+  feedback: Array<{ id: string; ticket_id: string | null; rating: string | null; notes: string | null; created_at: string }>;
+  attachments: Array<{ id: string; original_name: string | null; file_path: string | null; file_type: string | null; description: string | null }>;
+  related_articles?: Array<{ id: string; title: string; match_reason: string; effectiveness_rate: number; usage_count: number; updated_at: string }>;
+  metrics: { success_count: number; fail_count: number; partial_count: number; effectiveness_rate: number };
+};
+
 export const Route = createFileRoute("/_authenticated/knowledge-base/$articleId")({
   beforeLoad: async () => {
     await requireRole(["support_engineer", "field_engineer"]);
@@ -35,7 +54,7 @@ function KnowledgeArticleDetailsPage() {
 
   const [feedbackDraft, setFeedbackDraft] = useState({ rating: "success", notes: "", ticket_id: "" });
 
-  const { data: details, isLoading } = useQuery({
+  const { data: details, isLoading } = useQuery<KnowledgeArticleDetailsPayload>({
     queryKey: ["knowledge-article-details", articleId],
     queryFn: () => detailsFn({ data: { article_id: articleId } }),
   });
