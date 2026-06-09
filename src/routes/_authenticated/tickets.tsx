@@ -17,7 +17,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { requireRole } from "@/lib/auth-client";
-import { createTicketWorkflow, getKnowledgeSuggestions, getPhase2References, listTickets, saveKnowledgeFeedbackFromContext } from "@/lib/phase2.functions";
+import {
+  createTicketWorkflow,
+  getErrorResolutionRecommendations,
+  getKnowledgeSuggestions,
+  getPhase2References,
+  listTickets,
+  recordErrorIntelligenceEvent,
+  saveKnowledgeFeedbackFromContext,
+} from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
 type KnowledgeSuggestionItem = {
@@ -33,6 +41,27 @@ type KnowledgeSuggestionItem = {
   brand_name?: string | null;
 };
 
+type ResolutionRecommendationItem = {
+  knowledge: Array<KnowledgeSuggestionItem>;
+  related_tickets: Array<{
+    id: string;
+    status: string;
+    solution_type: string | null;
+    error_code_text: string | null;
+    summary: string;
+    resolved_at: string | null;
+    created_at: string;
+    knowledge_base_id: string | null;
+  }>;
+  recent_successful_resolutions: Array<{
+    ticket_id: string;
+    solution_type: string | null;
+    remote_solution_notes: string | null;
+    resolved_at: string | null;
+    knowledge_base_id: string | null;
+  }>;
+};
+
 export const Route = createFileRoute("/_authenticated/tickets")({
   beforeLoad: async () => {
     await requireRole(["support_engineer", "field_engineer"]);
@@ -46,6 +75,8 @@ function TicketsPage() {
   const listFn = useServerFn(listTickets);
   const createWorkflowFn = useServerFn(createTicketWorkflow);
   const suggestKnowledgeFn = useServerFn(getKnowledgeSuggestions);
+  const recommendResolutionFn = useServerFn(getErrorResolutionRecommendations);
+  const recordErrorEventFn = useServerFn(recordErrorIntelligenceEvent);
   const saveKnowledgeFeedbackContextFn = useServerFn(saveKnowledgeFeedbackFromContext);
   const { data: accessData } = useAccessContext();
   const roles = accessData?.roles ?? [];
@@ -126,6 +157,23 @@ function TicketsPage() {
         },
       }),
     enabled: Boolean(form.affected_product_id || form.error_code_id || form.error_code_text || form.description.trim().length >= 5),
+  });
+
+  const { data: resolutionRecommendations } = useQuery<ResolutionRecommendationItem>({
+    queryKey: ["ticket-error-recommendations", form.customer_system_id, form.affected_product_id, form.error_code_text, form.description],
+    queryFn: () =>
+      recommendResolutionFn({
+        data: {
+          customer_system_id: form.customer_system_id || null,
+          product_id: form.affected_product_id || null,
+          error_code_text: form.error_code_text || null,
+          issue_text: `${form.title} ${form.description}`,
+          ticket_id: null,
+          assignment_id: null,
+          limit: 5,
+        },
+      }),
+    enabled: Boolean(form.customer_system_id || form.affected_product_id || form.error_code_text || form.description.trim().length >= 8),
   });
 
   const filteredCustomers = useMemo(() => {
@@ -283,6 +331,29 @@ function TicketsPage() {
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["phase2-refs"] });
     } catch (error) {
+      void recordErrorEventFn({
+        data: {
+          classification: "workflow_error",
+          severity: "high",
+          source: "ticket_workflow",
+          message: error instanceof Error ? error.message : "تعذر إنشاء التذكرة",
+          details: {
+            ticket_type: form.ticket_type,
+            priority: form.priority,
+            field_visit_needed: form.field_visit_needed,
+            create_knowledge_entry: form.create_knowledge_entry,
+            affected_product_id: form.affected_product_id || null,
+            error_code_id: form.error_code_id || null,
+            error_code_text: form.error_code_text || null,
+            customer_system_id: form.customer_system_id || null,
+          },
+          action_hint: "راجع البيانات المدخلة وسياق النظام قبل إعادة الإنشاء.",
+          customer_system_id: form.customer_system_id || null,
+          product_id: form.affected_product_id || null,
+          error_code_id: form.error_code_id || null,
+          error_code_text: form.error_code_text || null,
+        },
+      }).catch(() => undefined);
       toast.error(error instanceof Error ? error.message : "تعذر إنشاء التذكرة");
     }
   };
