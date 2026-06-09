@@ -264,6 +264,7 @@ const knowledgeSearchSchema = z.object({
   category_id: z.string().uuid().optional().nullable(),
   error_code_id: z.string().uuid().optional().nullable(),
   error_code_text: z.string().trim().max(80).optional().nullable(),
+  customer_system_id: z.string().uuid().optional().nullable(),
   issue_description: z.string().trim().max(2500).optional().nullable(),
   limit: z.number().int().min(1).max(10).default(5),
 });
@@ -1148,12 +1149,14 @@ export const getKnowledgeSuggestions = createServerFn({ method: "POST" })
   .inputValidator((input) => knowledgeSearchSchema.parse(input))
   .handler(async ({ context, data }) => {
     const { supabase } = context;
+    const issueText = data.issue_description ?? undefined;
     const { data: rankedRows, error } = await supabase.rpc("search_knowledge_ranked", {
-      p_issue_text: data.issue_description ?? undefined,
+      p_issue_text: issueText,
       p_affected_product_id: data.affected_product_id ?? undefined,
       p_error_code_id: data.error_code_id ?? undefined,
       p_error_code_text: data.error_code_text ?? undefined,
       p_category_id: data.category_id ?? undefined,
+      p_customer_system_id: data.customer_system_id ?? undefined,
       p_sort_by: "relevance",
       p_limit: data.limit,
     });
