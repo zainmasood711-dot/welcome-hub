@@ -16,7 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAccessContext } from "@/hooks/use-access-context";
 import { supabase } from "@/integrations/supabase/client";
 import { requireRole } from "@/lib/auth-client";
-import { getAssignmentDetailsBundle, recordErrorIntelligenceEvent, submitAssignmentFieldReportWorkflow } from "@/lib/phase2.functions";
+import {
+  getAssignmentDetailsBundle,
+  getErrorResolutionRecommendations,
+  recordErrorIntelligenceEvent,
+  submitAssignmentFieldReportWorkflow,
+} from "@/lib/phase2.functions";
 
 export const Route = createFileRoute("/_authenticated/field-task/$assignmentId")({
   beforeLoad: async () => {
@@ -88,6 +93,7 @@ function FieldTaskPage() {
   const { assignmentId } = Route.useParams();
   const queryClient = useQueryClient();
   const detailsFn = useServerFn(getAssignmentDetailsBundle);
+  const recommendResolutionFn = useServerFn(getErrorResolutionRecommendations);
   const submitFn = useServerFn(submitAssignmentFieldReportWorkflow);
   const recordErrorEventFn = useServerFn(recordErrorIntelligenceEvent);
   const { data: accessData } = useAccessContext();
@@ -131,6 +137,23 @@ function FieldTaskPage() {
 
   const data = detailsQuery.data ?? cachedBundle;
   const isLoading = detailsQuery.isLoading && !cachedBundle;
+
+  const { data: recommendations } = useQuery({
+    queryKey: ["field-task-error-recommendations", assignmentId, data?.ticket?.id, data?.system?.id, data?.ticket?.affected_product_id, data?.ticket?.error_code_text],
+    queryFn: () =>
+      recommendResolutionFn({
+        data: {
+          customer_system_id: data?.system?.id ?? data?.ticket?.customer_system_id ?? null,
+          product_id: data?.ticket?.affected_product_id ?? null,
+          error_code_text: data?.ticket?.error_code_text ?? null,
+          issue_text: data?.ticket?.description ?? form.work_done ?? null,
+          ticket_id: data?.ticket?.id ?? null,
+          assignment_id: assignmentId,
+          limit: 5,
+        },
+      }),
+    enabled: Boolean(data?.ticket?.id || data?.system?.id),
+  });
 
   const readQueue = () => {
     try {
