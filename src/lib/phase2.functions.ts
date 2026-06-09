@@ -6,6 +6,9 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
+type ErrorIntelligenceClassification = Database["public"]["Enums"]["error_intelligence_classification"];
+type ErrorIntelligenceSeverity = Database["public"]["Enums"]["error_intelligence_severity"];
+type ErrorIntelligenceSource = Database["public"]["Enums"]["error_intelligence_source"];
 
 const customerSchema = z.object({
   id: z.string().uuid().optional(),
@@ -299,6 +302,49 @@ const knowledgeFeedbackFromContextSchema = z.object({
   notes: z.string().trim().max(1500).optional().nullable(),
   ticket_id: z.string().uuid().optional().nullable(),
   assignment_id: z.string().uuid().optional().nullable(),
+});
+
+const errorIntelligenceEventSchema = z.object({
+  classification: z.enum([
+    "application_error",
+    "validation_error",
+    "workflow_error",
+    "sync_error",
+    "upload_error",
+    "data_consistency_issue",
+    "repeated_operational_issue",
+    "low_effectiveness_knowledge_issue",
+  ]),
+  severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  source: z.enum(["runtime", "ticket_workflow", "assignment_workflow", "attachment_workflow", "offline_sync", "knowledge_workflow", "reporting"]),
+  message: z.string().trim().min(3).max(1500),
+  details: z.record(z.string(), z.unknown()).optional().nullable(),
+  action_hint: z.string().trim().max(1000).optional().nullable(),
+  source_ref_id: z.string().uuid().optional().nullable(),
+  customer_id: z.string().uuid().optional().nullable(),
+  customer_system_id: z.string().uuid().optional().nullable(),
+  ticket_id: z.string().uuid().optional().nullable(),
+  assignment_id: z.string().uuid().optional().nullable(),
+  attachment_id: z.string().uuid().optional().nullable(),
+  knowledge_base_id: z.string().uuid().optional().nullable(),
+  product_id: z.string().uuid().optional().nullable(),
+  error_code_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+});
+
+const errorIntelligenceRecommendationSchema = z.object({
+  customer_system_id: z.string().uuid().optional().nullable(),
+  product_id: z.string().uuid().optional().nullable(),
+  error_code_text: z.string().trim().max(80).optional().nullable(),
+  issue_text: z.string().trim().max(2000).optional().nullable(),
+  ticket_id: z.string().uuid().optional().nullable(),
+  assignment_id: z.string().uuid().optional().nullable(),
+  limit: z.number().int().min(1).max(10).default(5),
+});
+
+const updateErrorAlertStatusSchema = z.object({
+  alert_id: z.string().uuid(),
+  status: z.enum(["open", "acknowledged", "resolved", "ignored"]),
 });
 
 const imageExtensions = new Set(["jpg", "jpeg", "png", "webp"]);
