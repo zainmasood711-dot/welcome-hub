@@ -11,8 +11,10 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { recordErrorIntelligenceEvent } from "@/lib/phase2.functions";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
 
 function NotFoundComponent() {
   return (
@@ -39,8 +41,23 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const recordErrorEventFn = useServerFn(recordErrorIntelligenceEvent);
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
+    void recordErrorEventFn({
+      data: {
+        classification: "application_error",
+        severity: "high",
+        source: "runtime",
+        message: error.message || "Unhandled app runtime error",
+        details: {
+          boundary: "tanstack_root_error_component",
+          stack: error.stack,
+          route: typeof window !== "undefined" ? window.location.pathname : null,
+        },
+        action_hint: "راجع stack trace وسياق الواجهة قبل إعادة المحاولة.",
+      },
+    }).catch(() => undefined);
   }, [error]);
 
   return (
