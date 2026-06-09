@@ -103,10 +103,35 @@ function KnowledgeArticleDetailsPage() {
         <Tabs defaultValue="overview" className="space-y-3">
           <TabsList>
             <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
+            <TabsTrigger value="related">مقالات مرتبطة</TabsTrigger>
             <TabsTrigger value="tickets">التذاكر المرتبطة</TabsTrigger>
             <TabsTrigger value="feedback">التقييمات</TabsTrigger>
             <TabsTrigger value="attachments">المرفقات</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="related">
+            <Card>
+              <CardContent className="pt-6">
+                <Table>
+                  <TableHeader><TableRow><TableHead>العنوان</TableHead><TableHead>الفاعلية</TableHead><TableHead>الاستخدام</TableHead><TableHead>آخر تحديث</TableHead><TableHead>سبب الاقتراح</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {(details?.related_articles ?? []).map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{row.title}</TableCell>
+                        <TableCell>{row.effectiveness_rate}%</TableCell>
+                        <TableCell>{row.usage_count}</TableCell>
+                        <TableCell>{new Date(row.updated_at).toLocaleDateString("ar-EG")}</TableCell>
+                        <TableCell className="max-w-[260px] truncate" title={row.match_reason}>{row.match_reason}</TableCell>
+                      </TableRow>
+                    ))}
+                    {(details?.related_articles ?? []).length === 0 && (
+                      <TableRow><TableCell colSpan={5} className="py-4 text-center text-muted-foreground">لا توجد مقالات مرتبطة حاليًا.</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="overview">
             <Card>

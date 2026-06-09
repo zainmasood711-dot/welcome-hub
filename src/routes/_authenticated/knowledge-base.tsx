@@ -34,6 +34,9 @@ type KnowledgeListItem = {
   updated_at: string;
   freshness_score?: number | null;
   match_reason?: string;
+  usage_count?: number;
+  product_model?: string | null;
+  brand_name?: string | null;
 };
 
 export const Route = createFileRoute("/_authenticated/knowledge-base")({
@@ -57,7 +60,7 @@ function KnowledgeBasePage() {
   const [filterProductId, setFilterProductId] = useState("all");
   const [filterSource, setFilterSource] = useState("all");
   const [filterEffectiveness, setFilterEffectiveness] = useState("all");
-  const [sortBy, setSortBy] = useState<"newest" | "effectiveness" | "usage">("newest");
+  const [sortBy, setSortBy] = useState<"relevance" | "newest" | "effectiveness" | "usage" | "freshness">("relevance");
   const { data: refs } = useQuery({ queryKey: ["phase2-refs"], queryFn: () => refsFn() });
   const { data: articles = [], isLoading } = useQuery<KnowledgeListItem[]>({
     queryKey: ["knowledge-base", searchText, filterProductId, filterSource, filterEffectiveness, sortBy],
@@ -154,27 +157,29 @@ function KnowledgeBasePage() {
             <Select value={filterProductId} onValueChange={setFilterProductId}><SelectTrigger><SelectValue placeholder="المنتج" /></SelectTrigger><SelectContent><SelectItem value="all">كل المنتجات</SelectItem>{(refs?.products ?? []).map((p) => <SelectItem key={p.id} value={p.id}>{p.model}</SelectItem>)}</SelectContent></Select>
             <Select value={filterSource} onValueChange={setFilterSource}><SelectTrigger><SelectValue placeholder="المصدر" /></SelectTrigger><SelectContent><SelectItem value="all">كل المصادر</SelectItem><SelectItem value="manual">يدوي</SelectItem><SelectItem value="auto_from_ticket">آلي من تذكرة</SelectItem><SelectItem value="auto_from_assignment">آلي من مهمة</SelectItem></SelectContent></Select>
             <Select value={filterEffectiveness} onValueChange={setFilterEffectiveness}><SelectTrigger><SelectValue placeholder="الفاعلية" /></SelectTrigger><SelectContent><SelectItem value="all">كل النسب</SelectItem><SelectItem value="80">80% فأكثر</SelectItem><SelectItem value="60">60% فأكثر</SelectItem><SelectItem value="40">40% فأكثر</SelectItem></SelectContent></Select>
-            <Select value={sortBy} onValueChange={(value) => setSortBy(value as "newest" | "effectiveness" | "usage")}><SelectTrigger><SelectValue placeholder="الترتيب" /></SelectTrigger><SelectContent><SelectItem value="newest">الأحدث</SelectItem><SelectItem value="effectiveness">الأعلى فاعلية</SelectItem><SelectItem value="usage">الأكثر استخدامًا</SelectItem></SelectContent></Select>
+            <Select value={sortBy} onValueChange={(value) => setSortBy(value as "relevance" | "newest" | "effectiveness" | "usage" | "freshness")}><SelectTrigger><SelectValue placeholder="الترتيب" /></SelectTrigger><SelectContent><SelectItem value="relevance">الأكثر صلة</SelectItem><SelectItem value="newest">الأحدث</SelectItem><SelectItem value="effectiveness">الأعلى فاعلية</SelectItem><SelectItem value="usage">الأكثر استخدامًا</SelectItem><SelectItem value="freshness">الأحدث تحديثًا</SelectItem></SelectContent></Select>
           </CardContent>
         </Card>
 
         <div className="rounded-lg border bg-card">
           <Table>
-            <TableHeader><TableRow><TableHead>العنوان</TableHead><TableHead>المنتج</TableHead><TableHead>رمز الخطأ</TableHead><TableHead>المصدر</TableHead><TableHead>الفاعلية</TableHead><TableHead>الاستخدام</TableHead><TableHead className="text-left">إجراء</TableHead></TableRow></TableHeader>
+             <TableHeader><TableRow><TableHead>العنوان</TableHead><TableHead>المنتج</TableHead><TableHead>رمز الخطأ</TableHead><TableHead>المصدر</TableHead><TableHead>الفاعلية</TableHead><TableHead>الاستخدام</TableHead><TableHead>آخر تحديث</TableHead><TableHead>سبب الترشيح</TableHead><TableHead className="text-left">إجراء</TableHead></TableRow></TableHeader>
             <TableBody>
-              {isLoading && <TableRow><TableCell colSpan={7} className="py-6 text-center text-muted-foreground">جاري التحميل...</TableCell></TableRow>}
+               {isLoading && <TableRow><TableCell colSpan={9} className="py-6 text-center text-muted-foreground">جاري التحميل...</TableCell></TableRow>}
               {!isLoading && articles.map((a) => (
                 <TableRow key={a.id}>
                   <TableCell className="font-medium">{a.title}</TableCell>
-                  <TableCell>{refs?.products.find((p) => p.id === a.product_id)?.model ?? "—"}</TableCell>
+                   <TableCell>{a.product_model ?? refs?.products.find((p) => p.id === a.product_id)?.model ?? "—"}</TableCell>
                   <TableCell>{a.error_code_text ?? "—"}</TableCell>
                    <TableCell>{a.source === "manual" ? "يدوي" : a.source === "auto_from_assignment" ? "آلي من مهمة" : "آلي من تذكرة"}</TableCell>
                    <TableCell>{a.effectiveness_rate ?? 0}%</TableCell>
-                   <TableCell>{a.success_count + (a.partial_fail_count ?? 0) + a.fail_count}</TableCell>
+                   <TableCell>{a.usage_count ?? a.success_count + (a.partial_fail_count ?? 0) + a.fail_count}</TableCell>
+                  <TableCell>{new Date(a.updated_at).toLocaleDateString("ar-EG")}</TableCell>
+                  <TableCell className="max-w-[220px] truncate" title={a.match_reason ?? ""}>{a.match_reason ?? "—"}</TableCell>
                    <TableCell className="text-left"><div className="flex gap-2"><Button asChild size="sm" variant="secondary"><Link to="/_authenticated/knowledge-base/$articleId" params={{ articleId: a.id }}>تفاصيل</Link></Button>{canManage && <Button variant="outline" size="sm" onClick={() => { setForm({ id: a.id, title: a.title, issue_description: a.issue_description ?? "", solution_steps: a.solution_steps ?? "", product_id: a.product_id ?? "", error_code_text: a.error_code_text ?? "", search_keywords: a.search_keywords ?? "", source: a.source as "manual" | "auto_from_ticket" | "auto_from_assignment", success_count: a.success_count, partial_count: a.partial_fail_count ?? 0, fail_count: a.fail_count, effectiveness_rate: Number(a.effectiveness_rate ?? 0) }); setOpen(true); }}>تعديل</Button>}</div></TableCell>
                 </TableRow>
               ))}
-              {!isLoading && articles.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة للبحث الحالي.</TableCell></TableRow>}
+               {!isLoading && articles.length === 0 && <TableRow><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">لا توجد نتائج مطابقة للبحث الحالي.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </div>
