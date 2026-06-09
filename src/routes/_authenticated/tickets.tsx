@@ -20,6 +20,19 @@ import { requireRole } from "@/lib/auth-client";
 import { createTicketWorkflow, getKnowledgeSuggestions, getPhase2References, listTickets, saveKnowledgeFeedbackFromContext } from "@/lib/phase2.functions";
 import { hasAnyPermission } from "@/lib/roles";
 
+type KnowledgeSuggestionItem = {
+  id: string;
+  title: string;
+  solution_steps: string | null;
+  effectiveness_rate: number;
+  usage_count: number;
+  priority_tier: number;
+  match_reason: string;
+  updated_at: string;
+  product_model?: string | null;
+  brand_name?: string | null;
+};
+
 export const Route = createFileRoute("/_authenticated/tickets")({
   beforeLoad: async () => {
     await requireRole(["support_engineer", "field_engineer"]);
@@ -98,7 +111,7 @@ function TicketsPage() {
       }),
   });
 
-  const { data: suggestedKnowledge = [] } = useQuery({
+  const { data: suggestedKnowledge = [] } = useQuery<KnowledgeSuggestionItem[]>({
     queryKey: ["ticket-knowledge", form.affected_product_id, form.error_code_id, form.error_code_text, form.description],
     queryFn: () =>
       suggestKnowledgeFn({
@@ -106,6 +119,7 @@ function TicketsPage() {
           affected_product_id: form.affected_product_id || null,
           error_code_id: form.error_code_id || null,
           error_code_text: form.error_code_text || null,
+          customer_system_id: form.customer_system_id || null,
           issue_description: `${form.title} ${form.description}`,
           category_id: null,
           limit: 5,
@@ -471,8 +485,11 @@ function TicketsPage() {
                         <p className="font-medium text-sm">{item.title}</p>
                         <Badge>{tierLabel[item.priority_tier] ?? "مطابقة"}</Badge>
                         <Badge variant="secondary">{item.effectiveness_rate}%</Badge>
+                        <Badge variant="outline">استخدام {item.usage_count}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{item.match_reason}</p>
+                      <p className="text-xs text-muted-foreground">آخر تحديث: {new Date(item.updated_at).toLocaleDateString("ar-EG")}</p>
+                      <p className="text-xs text-muted-foreground">السياق: {item.product_model ?? "غير محدد"}{item.brand_name ? ` • ${item.brand_name}` : ""}</p>
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{item.solution_steps}</p>
                       <Button
                         type="button"

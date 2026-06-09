@@ -468,6 +468,7 @@ export type Database = {
           quality_score: number
           review_state: string
           search_keywords: string | null
+          search_vector: unknown
           solution_steps: string | null
           source: string
           success_count: number
@@ -500,6 +501,7 @@ export type Database = {
           quality_score?: number
           review_state?: string
           search_keywords?: string | null
+          search_vector?: unknown
           solution_steps?: string | null
           source?: string
           success_count?: number
@@ -532,6 +534,7 @@ export type Database = {
           quality_score?: number
           review_state?: string
           search_keywords?: string | null
+          search_vector?: unknown
           solution_steps?: string | null
           source?: string
           success_count?: number
@@ -1121,6 +1124,47 @@ export type Database = {
         }
         Returns: boolean
       }
+      search_knowledge_ranked: {
+        Args: {
+          p_affected_product_id?: string
+          p_category_id?: string
+          p_customer_system_id?: string
+          p_error_code_id?: string
+          p_error_code_text?: string
+          p_exclude_knowledge_id?: string
+          p_issue_text?: string
+          p_limit?: number
+          p_min_effectiveness?: number
+          p_sort_by?: string
+          p_source?: string
+        }
+        Returns: {
+          brand_name: string
+          category_id: string
+          effectiveness_rate: number
+          error_code_text: string
+          fail_count: number
+          freshness_score: number
+          id: string
+          issue_description: string
+          match_reason: string
+          match_score: number
+          partial_fail_count: number
+          priority_tier: number
+          product_id: string
+          product_model: string
+          search_keywords: string
+          solution_steps: string
+          source: string
+          success_count: number
+          title: string
+          updated_at: string
+          usage_count: number
+          why: Json
+        }[]
+      }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       user_primary_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
