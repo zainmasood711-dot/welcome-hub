@@ -394,7 +394,9 @@ function FieldTaskPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "تعذر إرسال التقرير";
       setSubmitError(message);
-      if (!navigator.onLine || /network|failed|timeout/i.test(message)) {
+      if (selectedImageFiles.length > 0) {
+        toast.error(`${message} - لم يتم إرسال التقرير لأن رفع الصور لم يكتمل. حاول مرة أخرى.`);
+      } else if (!navigator.onLine || /network|failed|timeout/i.test(message)) {
         enqueueReport(payload);
       } else {
         toast.error(message);
