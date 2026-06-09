@@ -2562,7 +2562,7 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const { data: profileRow } = await supabase.from("profiles").select("engineer_id").eq("id", userId).maybeSingle();
     const currentEngineerId = profileRow?.engineer_id ?? null;
 
-    const [ticketsRes, assignmentsRes, engineersRes, productsRes, kbRes] = await Promise.all([
+    const [ticketsRes, assignmentsRes, engineersRes, productsRes, kbRes, alertsRes, eventsRes] = await Promise.all([
       source
         .from("tickets")
         .select("id, customer_id, status, ticket_type, priority, error_code_text, created_at, resolved_at, affected_product_id"),
@@ -2570,9 +2570,19 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       source.from("engineers").select("id, name"),
       source.from("products").select("id, model"),
       source.from("knowledge_base").select("id, title, effectiveness_rate, success_count, fail_count"),
+      source
+        .from("error_intelligence_alerts")
+        .select("id, rule_type, severity, status, title, summary, trigger_count, related_ticket_id, related_assignment_id, related_knowledge_base_id, related_product_id, related_error_code_text, last_detected_at")
+        .order("last_detected_at", { ascending: false })
+        .limit(50),
+      source
+        .from("error_intelligence_events")
+        .select("id, classification, severity, source, occurred_at")
+        .order("occurred_at", { ascending: false })
+        .limit(500),
     ]);
 
-    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error, kbRes.error].filter(Boolean);
+    const errors = [ticketsRes.error, assignmentsRes.error, engineersRes.error, productsRes.error, kbRes.error, alertsRes.error, eventsRes.error].filter(Boolean);
     if (errors.length > 0) throw new Error(errors[0]?.message ?? "تعذر تحميل التقرير التشغيلي");
 
     const tickets = ticketsRes.data ?? [];
@@ -2580,6 +2590,8 @@ export const getOperationsReport = createServerFn({ method: "GET" })
     const engineers = engineersRes.data ?? [];
     const products = productsRes.data ?? [];
     const knowledge = kbRes.data ?? [];
+    const errorAlerts = alertsRes.data ?? [];
+    const errorEvents = eventsRes.data ?? [];
 
     const customerIds = Array.from(new Set(tickets.map((item) => item.customer_id).filter(Boolean)));
     const customersRes = customerIds.length
@@ -2739,6 +2751,19 @@ export const getOperationsReport = createServerFn({ method: "GET" })
         .slice(0, 6),
     };
 
+    const errorClassifications = new Map<string, number>();
+    for (const event of errorEvents) {
+      const key = event.classification ?? "unknown";
+      errorClassifications.set(key, (errorClassifications.get(key) ?? 0) + 1);
+    }
+
+    const topErrorClassifications = [...errorClassifications.entries()]
+      .map(([classification, count]) => ({ classification, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+
+    const openCriticalErrorAlerts = errorAlerts.filter((alert) => alert.status === "open" && (alert.severity === "high" || alert.severity === "critical"));
+
     return {
       unresolved,
       delayed,
@@ -2761,6 +2786,13 @@ export const getOperationsReport = createServerFn({ method: "GET" })
       topProblematicModels,
       fieldSummary,
       knowledgeBaseUsage,
+      errorIntelligence: {
+        totalAlerts: errorAlerts.length,
+        openAlerts: errorAlerts.filter((item) => item.status === "open").length,
+        openCriticalAlerts: openCriticalErrorAlerts.length,
+        topClassifications: topErrorClassifications,
+        latestAlerts: errorAlerts.slice(0, 12),
+      },
     };
   });
 
