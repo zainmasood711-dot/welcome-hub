@@ -372,6 +372,68 @@ function calculateEffectivenessRate(successCount: number, failCount: number) {
   return Number(((successCount / total) * 100).toFixed(2));
 }
 
+function splitStoragePath(path: string) {
+  const normalized = path.trim().replace(/^\/+/, "");
+  const lastSlashIndex = normalized.lastIndexOf("/");
+  if (lastSlashIndex === -1) {
+    return { folder: "", fileName: normalized };
+  }
+
+  return {
+    folder: normalized.slice(0, lastSlashIndex),
+    fileName: normalized.slice(lastSlashIndex + 1),
+  };
+}
+
+async function assertStoragePathsExist(supabase: SupabaseClient<Database>, paths: string[]) {
+  const uniquePaths = Array.from(new Set(paths.map((value) => value.trim()).filter(Boolean)));
+
+  for (const path of uniquePaths) {
+    const { folder, fileName } = splitStoragePath(path);
+    if (!fileName) {
+      throw new Error("مسار الملف غير صالح");
+    }
+
+    const { data, error } = await supabase.storage.from("field-attachments").list(folder, {
+      search: fileName,
+      limit: 100,
+    });
+
+    if (error) {
+      throw new Error(`تعذر التحقق من الملف في التخزين: ${error.message}`);
+    }
+
+    const exists = (data ?? []).some((item) => item.name === fileName);
+    if (!exists) {
+      throw new Error(`الملف غير موجود في التخزين: ${path}`);
+    }
+  }
+}
+
+async function assertAttachableExists(
+  supabase: SupabaseClient<Database>,
+  attachableType: "ticket" | "assignment" | "knowledge_base",
+  attachableId: string,
+) {
+  if (attachableType === "ticket") {
+    const { data, error } = await supabase.from("tickets").select("id").eq("id", attachableId).maybeSingle();
+    if (error) throw new Error(`تعذر التحقق من التذكرة المرتبطة: ${error.message}`);
+    if (!data) throw new Error("التذكرة المرتبطة غير موجودة");
+    return;
+  }
+
+  if (attachableType === "assignment") {
+    const { data, error } = await supabase.from("assignments").select("id").eq("id", attachableId).maybeSingle();
+    if (error) throw new Error(`تعذر التحقق من المهمة المرتبطة: ${error.message}`);
+    if (!data) throw new Error("المهمة المرتبطة غير موجودة");
+    return;
+  }
+
+  const { data, error } = await supabase.from("knowledge_base").select("id").eq("id", attachableId).maybeSingle();
+  if (error) throw new Error(`تعذر التحقق من مادة المعرفة المرتبطة: ${error.message}`);
+  if (!data) throw new Error("مادة المعرفة المرتبطة غير موجودة");
+}
+
 async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, knowledgeBaseId: string) {
   const { data: feedbackRows, error: feedbackError } = await supabase
     .from("knowledge_feedback")
@@ -381,6 +443,7 @@ async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, k
 
   const successCount = (feedbackRows ?? []).filter((row) => row.rating === "success").length;
   const failCount = (feedbackRows ?? []).filter((row) => row.rating === "failure").length;
+  const partialCount = (feedbackRows ?? []).filter((row) => row.rating === "partial").length;
   const effectivenessRate = calculateEffectivenessRate(successCount, failCount);
 
   const { error: updateError } = await supabase
@@ -388,12 +451,13 @@ async function recalculateKnowledgeMetrics(supabase: SupabaseClient<Database>, k
     .update({
       success_count: successCount,
       fail_count: failCount,
+      partial_count: partialCount,
       effectiveness_rate: effectivenessRate,
     })
     .eq("id", knowledgeBaseId);
   if (updateError) throw new Error(`تعذر حفظ معدل فعالية المادة: ${updateError.message}`);
 
-  return { successCount, failCount, effectivenessRate };
+  return { successCount, failCount, partialCount, effectivenessRate };
 }
 
 function extractImportantWords(text?: string | null) {
