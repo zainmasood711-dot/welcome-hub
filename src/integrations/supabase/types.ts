@@ -93,10 +93,16 @@ export type Database = {
       attachments: {
         Row: {
           assignment_id: string | null
+          attachable_id: string | null
+          attachable_type: string | null
           created_at: string
+          description: string | null
+          file_path: string | null
+          file_size: number | null
           file_type: string | null
-          file_url: string
+          file_url: string | null
           id: string
+          original_name: string | null
           ticket_id: string | null
           updated_at: string
           uploaded_at: string
@@ -104,10 +110,16 @@ export type Database = {
         }
         Insert: {
           assignment_id?: string | null
+          attachable_id?: string | null
+          attachable_type?: string | null
           created_at?: string
+          description?: string | null
+          file_path?: string | null
+          file_size?: number | null
           file_type?: string | null
-          file_url: string
+          file_url?: string | null
           id?: string
+          original_name?: string | null
           ticket_id?: string | null
           updated_at?: string
           uploaded_at?: string
@@ -115,10 +127,16 @@ export type Database = {
         }
         Update: {
           assignment_id?: string | null
+          attachable_id?: string | null
+          attachable_type?: string | null
           created_at?: string
+          description?: string | null
+          file_path?: string | null
+          file_size?: number | null
           file_type?: string | null
-          file_url?: string
+          file_url?: string | null
           id?: string
+          original_name?: string | null
           ticket_id?: string | null
           updated_at?: string
           uploaded_at?: string
@@ -419,29 +437,45 @@ export type Database = {
       knowledge_feedback: {
         Row: {
           created_at: string
+          engineer_id: string | null
           id: string
           is_helpful: boolean
           knowledge_base_id: string
+          notes: string | null
+          rating: string | null
           ticket_id: string | null
           user_id: string | null
         }
         Insert: {
           created_at?: string
+          engineer_id?: string | null
           id?: string
           is_helpful: boolean
           knowledge_base_id: string
+          notes?: string | null
+          rating?: string | null
           ticket_id?: string | null
           user_id?: string | null
         }
         Update: {
           created_at?: string
+          engineer_id?: string | null
           id?: string
           is_helpful?: boolean
           knowledge_base_id?: string
+          notes?: string | null
+          rating?: string | null
           ticket_id?: string | null
           user_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "knowledge_feedback_engineer_id_fkey"
+            columns: ["engineer_id"]
+            isOneToOne: false
+            referencedRelation: "engineers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "knowledge_feedback_knowledge_base_id_fkey"
             columns: ["knowledge_base_id"]
@@ -732,17 +766,23 @@ export type Database = {
       tickets: {
         Row: {
           affected_product_id: string | null
+          category_id: string | null
           closed_at: string | null
           created_at: string
           created_by: string | null
           customer_id: string
           customer_system_id: string | null
           description: string
+          error_code_id: string | null
           error_code_text: string | null
           id: string
           knowledge_base_id: string | null
           priority: string
           remote_solution: string | null
+          remote_solution_notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          solution_type: string | null
           status: string
           status_reason: string | null
           status_updated_at: string | null
@@ -752,17 +792,23 @@ export type Database = {
         }
         Insert: {
           affected_product_id?: string | null
+          category_id?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
           customer_id: string
           customer_system_id?: string | null
           description: string
+          error_code_id?: string | null
           error_code_text?: string | null
           id?: string
           knowledge_base_id?: string | null
           priority?: string
           remote_solution?: string | null
+          remote_solution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          solution_type?: string | null
           status?: string
           status_reason?: string | null
           status_updated_at?: string | null
@@ -772,17 +818,23 @@ export type Database = {
         }
         Update: {
           affected_product_id?: string | null
+          category_id?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
           customer_id?: string
           customer_system_id?: string | null
           description?: string
+          error_code_id?: string | null
           error_code_text?: string | null
           id?: string
           knowledge_base_id?: string | null
           priority?: string
           remote_solution?: string | null
+          remote_solution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          solution_type?: string | null
           status?: string
           status_reason?: string | null
           status_updated_at?: string | null
@@ -796,6 +848,13 @@ export type Database = {
             columns: ["affected_product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "product_categories"
             referencedColumns: ["id"]
           },
           {
@@ -813,10 +872,31 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tickets_error_code_id_fkey"
+            columns: ["error_code_id"]
+            isOneToOne: false
+            referencedRelation: "error_codes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tickets_knowledge_base_id_fkey"
             columns: ["knowledge_base_id"]
             isOneToOne: false
             referencedRelation: "knowledge_base"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "v_profiles_with_role"
             referencedColumns: ["id"]
           },
         ]
