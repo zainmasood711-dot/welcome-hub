@@ -39,6 +39,12 @@ type KnowledgeSuggestionItem = {
   updated_at: string;
   product_model?: string | null;
   brand_name?: string | null;
+  lifecycle_state?: "draft" | "verified" | "needs_review" | "low_confidence" | "archived";
+  quality_score_v2?: number | null;
+  decline_score?: number | null;
+  usage_count_total?: number;
+  last_success_at?: string | null;
+  needs_human_review?: boolean;
 };
 
 type ResolutionRecommendationItem = {
@@ -556,9 +562,12 @@ function TicketsPage() {
                         <p className="font-medium text-sm">{item.title}</p>
                         <Badge>{tierLabel[item.priority_tier] ?? "مطابقة"}</Badge>
                         <Badge variant="secondary">{item.effectiveness_rate}%</Badge>
-                        <Badge variant="outline">استخدام {item.usage_count}</Badge>
+                        <Badge variant="outline">استخدام {item.usage_count_total ?? item.usage_count}</Badge>
+                        <Badge variant="secondary">{item.lifecycle_state === "verified" ? "موثقة" : item.lifecycle_state === "needs_review" ? "تحتاج مراجعة" : item.lifecycle_state === "low_confidence" ? "منخفضة الثقة" : item.lifecycle_state === "archived" ? "مؤرشفة" : "مسودة"}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{item.match_reason}</p>
+                      <p className="text-xs text-muted-foreground">جودة: {Math.round((item.quality_score_v2 ?? 0) * 100)}% • تدهور: {Math.round((item.decline_score ?? 0) * 100)}%</p>
+                      {item.last_success_at && <p className="text-xs text-muted-foreground">آخر نجاح: {new Date(item.last_success_at).toLocaleDateString("ar-EG")}</p>}
                       <p className="text-xs text-muted-foreground">آخر تحديث: {new Date(item.updated_at).toLocaleDateString("ar-EG")}</p>
                       <p className="text-xs text-muted-foreground">السياق: {item.product_model ?? "غير محدد"}{item.brand_name ? ` • ${item.brand_name}` : ""}</p>
                       <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{item.solution_steps}</p>
