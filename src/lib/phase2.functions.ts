@@ -277,9 +277,6 @@ const knowledgeListFiltersSchema = z.object({
   limit: z.number().int().min(1).max(300).default(200),
 });
 
-const knowledgeBaseSelectColumns =
-  "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state" as const;
-
 const createKnowledgeFromTicketSchema = z.object({
   ticket_id: z.string().uuid(),
   title: z.string().trim().min(3).max(200).optional().nullable(),
@@ -1375,7 +1372,9 @@ export const getKnowledgeArticleDetails = createServerFn({ method: "POST" })
 
     const { data: article, error: articleError } = await supabase
       .from("knowledge_base")
-      .select(knowledgeBaseSelectColumns)
+      .select(
+        "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state",
+      )
       .eq("id", data.article_id)
       .single();
     if (articleError) throw new Error(`تعذر تحميل المادة المعرفية: ${articleError.message}`);
@@ -1870,7 +1869,12 @@ export const listKnowledgeBase = createServerFn({ method: "POST" })
       return rankedRows ?? [];
     }
 
-    let query = supabase.from("knowledge_base").select(knowledgeBaseSelectColumns).limit(data.limit);
+    let query = supabase
+      .from("knowledge_base")
+      .select(
+        "id, title, issue_description, solution_steps, product_id, error_code_text, search_keywords, source, linked_ticket_ids, success_count, partial_fail_count, fail_count, effectiveness_rate, updated_at, freshness_score, confidence_score, verification_state, review_state",
+      )
+      .limit(data.limit);
 
     if (data.product_id) query = query.eq("product_id", data.product_id);
     if (data.source) query = query.eq("source", data.source);
