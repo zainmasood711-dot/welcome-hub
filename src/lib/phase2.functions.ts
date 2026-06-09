@@ -1722,7 +1722,9 @@ export const submitAssignmentReport = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => assignmentFieldUpdateSchema.parse(input))
   .handler(async ({ context, data }) => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
+    const assignmentAccess = await assertCanAccessAssignment(supabase, userId, data.id);
+
     const { error } = await supabase
       .from("assignments")
       .update({
@@ -1735,6 +1737,26 @@ export const submitAssignmentReport = createServerFn({ method: "POST" })
       .eq("id", data.id);
 
     if (error) throw new Error(`تعذر إرسال تقرير المهمة: ${error.message}`);
+
+    if (assignmentAccess.ticket_id) {
+      const nextTicketStatus =
+        data.status === "completed"
+          ? "closed"
+          : data.status === "in_progress"
+            ? "in_progress"
+            : data.status === "pending"
+              ? "assigned_field"
+              : "in_progress";
+
+      const { error: ticketUpdateError } = await supabase
+        .from("tickets")
+        .update({ status: nextTicketStatus, solution_type: "field" })
+        .eq("id", assignmentAccess.ticket_id);
+      if (ticketUpdateError) {
+        throw new Error(`تم تحديث المهمة لكن تعذر مزامنة حالة التذكرة: ${ticketUpdateError.message}`);
+      }
+    }
+
     return { ok: true };
   });
 
